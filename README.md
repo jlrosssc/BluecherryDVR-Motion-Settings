@@ -4,6 +4,14 @@ BluecherryDVR Motion Settings analyzes recent Bluecherry recordings and generate
 
 The web UI integration does not save automatically. It loads the proposed map into Bluecherry's existing grid so you can review and edit it, then use Bluecherry's normal **Save Changes** button.
 
+## Important Timing Note
+
+This tool recommends settings from motion that already exists in recorded video. Run it only after the camera has had enough time to record representative activity for that location.
+
+For a new camera or recently moved camera, wait at least 24 hours before using the recommendation. For better results, wait several days so the sample includes normal daytime, nighttime, weather, shadows, vehicles, people, pets, trees, and other recurring motion.
+
+If the available recordings only include quiet periods, the tool may recommend too many inactive cells. If they only include storms, wind, or unusual activity, it may recommend settings that are too sensitive or too suppressed.
+
 ## Requirements
 
 - Bluecherry DVR with MySQL configuration at `/etc/bluecherry.conf`
