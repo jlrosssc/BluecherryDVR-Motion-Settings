@@ -282,7 +282,7 @@ def copy_recent_recordings(camera_id, sample_dir, sample_count, lookback_hours=N
         write_progress(
             progress_file,
             "copying",
-            "Found {} recordings; copying {} sampled recordings for analysis.".format(candidate_count, len(selected_files)),
+            "Preparing sampled recordings for analysis.",
             candidate_count=candidate_count,
             total=len(selected_files),
             current=0,
@@ -294,7 +294,7 @@ def copy_recent_recordings(camera_id, sample_dir, sample_count, lookback_hours=N
             write_progress(
                 progress_file,
                 "copying",
-                "Copying recording {} of {} for analysis.".format(index, len(selected_files)),
+                "Copying sampled recording.",
                 candidate_count=candidate_count,
                 total=len(selected_files),
                 current=index,
@@ -369,7 +369,7 @@ def extract_gray_frames(video_files, frame_dir, frames_per_video, width, height,
         write_progress(
             progress_file,
             "analyzing",
-            "Analyzing recording {} of {}.".format(index, total),
+            "Analyzing sampled recording.",
             total=total,
             current=index,
             phase="analyzing",

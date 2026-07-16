@@ -28,13 +28,33 @@ $(function() {
 
     function recommendMotionProgressText(progress) {
         if (!progress) return "Recommendation scan is still running...";
-        var text = progress.message || "Recommendation scan is still running...";
-        if (progress.current !== undefined && progress.total !== undefined && parseInt(progress.total, 10) > 0) {
-            text += " (" + progress.current + " of " + progress.total + ")";
+        var phase = progress.phase || progress.state || "";
+        var current = parseInt(progress.current, 10);
+        var total = parseInt(progress.total, 10);
+        var found = parseInt(progress.candidate_count, 10);
+        var hasTotal = !isNaN(total) && total > 0;
+        var hasCurrent = !isNaN(current);
+        var hasFound = !isNaN(found);
+        var text = progress.message || "Recommendation scan is still running.";
+
+        if (phase === "finding") {
+            text = "Finding recordings for this camera...";
+        } else if (phase === "copying") {
+            if (hasFound && hasTotal && hasCurrent) {
+                text = "Found " + found + " recordings in the selected window. Copying sample " + current + " of " + total + ".";
+            } else if (hasFound && hasTotal) {
+                text = "Found " + found + " recordings in the selected window. Preparing " + total + " samples.";
+            } else if (hasTotal && hasCurrent) {
+                text = "Copying sample " + current + " of " + total + ".";
+            }
+        } else if (phase === "analyzing" && hasTotal && hasCurrent) {
+            text = "Analyzing sample " + current + " of " + total + ".";
+        } else if (phase === "mapping") {
+            text = progress.message || "Building recommended motion map.";
+        } else if (phase === "complete") {
+            text = "Recommendation complete.";
         }
-        if (progress.candidate_count !== undefined) {
-            text += " Found " + progress.candidate_count + " recordings in the selected window.";
-        }
+
         if (progress.updated_at) {
             text += " Updated " + progress.updated_at + ".";
         }
