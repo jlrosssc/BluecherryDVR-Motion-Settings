@@ -83,15 +83,17 @@ $(function() {
         var id = $("#motion-submit").find("input[name=id]").val();
         var mode = $("#auto-motion-scan-mode").val();
         var deepHours = parseInt($("#auto-motion-deep-hours").val(), 10) || 24;
+        var scanSamples = 2;
         button.button("loading");
         if (mode === "deep") {
             deepHours = Math.max(24, Math.min(168, deepHours));
+            scanSamples = deepHours;
             $("#auto-motion-deep-hours").val(deepHours);
-            if (!confirm("Deep Scan will start a background job across " + deepHours + " hours and may take several minutes. Continue?")) {
+            if (!confirm("Deep Scan will start a background job across " + deepHours + " hours and sample up to " + scanSamples + " recordings. This may take several minutes. Continue?")) {
                 button.button("reset");
                 return false;
             }
-            status.removeClass("text-danger text-success").addClass("text-muted").text("Starting Deep Scan background job...");
+            status.removeClass("text-danger text-success").addClass("text-muted").text("Starting Deep Scan background job for up to " + scanSamples + " recordings...");
         } else {
             status.removeClass("text-danger text-success").addClass("text-muted").text("Starting Quick Scan background job...");
         }
@@ -106,7 +108,7 @@ $(function() {
                 noise_suppression: $("#auto-motion-noise").val(),
                 scan_mode: mode,
                 deep_hours: deepHours,
-                samples: (mode === "deep" ? 24 : 2),
+                samples: scanSamples,
                 frames_per_video: (mode === "deep" ? 3 : 2)
             }
         }).done(function(msg) {

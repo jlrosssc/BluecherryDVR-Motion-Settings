@@ -29,7 +29,7 @@ class automotionmap extends Controller {
             $mode = 'quick';
         }
         $deep_hours = max(24, min(168, $deep_hours));
-        $samples = max(1, min(36, $samples));
+        $samples = max(1, min(($mode === 'deep') ? 168 : 12, $samples));
         $frames = max(2, min(12, $frames));
 
         $cmd = $this->buildCommand($id, $sensitivity, $noise, $mode, $deep_hours, $samples, $frames);
