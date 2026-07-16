@@ -43,7 +43,7 @@ bluecherry-motion-optimizer analyze --camera 1 --sensitivity 5 --noise-suppressi
 Run a deep scan over a time window:
 
 ```bash
-bluecherry-motion-optimizer analyze --camera 1 --sensitivity 5 --noise-suppression 5 --lookback-hours 72 --samples 72 --frames-per-video 3
+bluecherry-motion-optimizer analyze --camera 1 --sensitivity 5 --noise-suppression 5 --lookback-hours 72 --samples 288 --frames-per-video 3
 ```
 
 Apply the proposed map to the Bluecherry database:
@@ -69,12 +69,12 @@ Then open Bluecherry:
 1. Go to the camera motion-map settings page.
 2. Set **Sensitivity** and **Noise Filter**.
 3. Choose **Quick Scan** or **Deep Scan**.
-4. For **Deep Scan**, choose `24-168` hours. It may take several minutes because it samples up to one recording per selected hour across that time window.
+4. For **Deep Scan**, choose `24-168` hours. It may take several minutes because it samples up to four recordings per selected hour across that time window.
 5. Click **Recommend Motion Sensitivity**.
 6. Review and edit the grid.
 7. Click Bluecherry's normal **Save Changes** button.
 
-Quick Scan uses the newest recordings and is intended for a fast first pass. Deep Scan spreads up to one sample per selected hour across the selected lookback window and usually gives a better recommendation when the camera has enough representative recordings.
+Quick Scan uses the newest recordings and is intended for a fast first pass. Deep Scan spreads up to four samples per selected hour across the selected lookback window and usually gives a better recommendation when the camera has enough representative recordings.
 
 Recommendation scans run as background jobs on the Bluecherry server. The web page polls for status and stores the active job id in the browser for that camera, so a long Deep Scan can continue even if the browser briefly disconnects. If the computer sleeps, reopen the same motion-map page and the page will try to reconnect to the last scan for that camera.
 

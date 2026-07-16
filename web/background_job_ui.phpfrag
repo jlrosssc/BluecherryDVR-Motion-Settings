@@ -107,7 +107,7 @@ $(function() {
         button.button("loading");
         if (mode === "deep") {
             deepHours = Math.max(24, Math.min(168, deepHours));
-            scanSamples = deepHours;
+            scanSamples = deepHours * 4;
             $("#auto-motion-deep-hours").val(deepHours);
             if (!confirm("Deep Scan will start a background job across " + deepHours + " hours and sample up to " + scanSamples + " recordings. This may take several minutes. Continue?")) {
                 button.button("reset");
