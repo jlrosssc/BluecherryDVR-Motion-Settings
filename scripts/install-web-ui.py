@@ -80,8 +80,23 @@ def install(args):
                     <div class="col-lg-2 col-md-2">
                         <input type="number" class="form-control" id="auto-motion-noise" min="0" max="10" value="5" />
                     </div>
+                </div>
 
-                    <div class="col-lg-4 col-md-4">
+                <div class="form-group">
+                    <label class="col-lg-2 col-md-2 control-label">Scan Type</label>
+                    <div class="col-lg-3 col-md-3">
+                        <select class="form-control" id="auto-motion-scan-mode">
+                            <option value="quick" selected="selected">Quick Scan</option>
+                            <option value="deep">Deep Scan</option>
+                        </select>
+                    </div>
+
+                    <label class="col-lg-2 col-md-2 control-label">Deep Hours</label>
+                    <div class="col-lg-2 col-md-2">
+                        <input type="number" class="form-control" id="auto-motion-deep-hours" min="24" max="168" value="24" disabled="disabled" />
+                    </div>
+
+                    <div class="col-lg-3 col-md-3">
                         <button type="button" class="btn btn-primary click-event" id="auto-motion-detect" data-function="autoMotionMapRun" data-loading-text="Analyzing...">
                             <i class="fa fa-magic fa-fw"></i> Recommend Motion Sensitivity
                         </button>
@@ -89,7 +104,7 @@ def install(args):
                 </div>
                 <div class="form-group">
                     <div class="col-lg-12 col-md-12">
-                        <span id="auto-motion-status" class="text-muted">Loads a proposed map into the grid only. Review/edit, then click Save Changes.</span>
+                        <span id="auto-motion-status" class="text-muted">Quick Scan uses recent recordings. Deep Scan samples 24-168 hours and may take several minutes. Review/edit, then click Save Changes.</span>
                     </div>
                 </div>
             </div>
@@ -103,79 +118,106 @@ def install(args):
         template.write_text(tpl.replace(needle, insert + "\n" + needle, 1))
 
     tpl = template.read_text()
-    marker = "/* Recommend Motion Sensitivity inline: start */"
+    marker = "/* Recommend Motion Sensitivity nowdoc: start */"
     if marker not in tpl:
-        inline = r'''
+        nowdoc = r"""
 
-        /* Recommend Motion Sensitivity inline: start */
-        function recommendMotionApplyToGrid(map) {
-            var cells = $('.grid-bl .table-grid td');
-            var classes = ['bg-default', 'bg-success', 'bg-info', 'bg-primary', 'bg-warning', 'bg-danger'];
-            if (!map || cells.length !== map.length) {
-                $('#auto-motion-status').removeClass('text-muted text-success').addClass('text-danger').text('Recommended map does not match this camera grid.');
+addJs(<<<'JS'
+$(function() {
+    /* Recommend Motion Sensitivity nowdoc: start */
+    function recommendMotionApplyToGrid(map) {
+        var cells = $(".grid-bl .table-grid td");
+        var classes = ["bg-default", "bg-success", "bg-info", "bg-primary", "bg-warning", "bg-danger"];
+        if (!map || cells.length !== map.length) {
+            $("#auto-motion-status").removeClass("text-muted text-success").addClass("text-danger").text("Recommended map does not match this camera grid.");
+            return false;
+        }
+        cells.each(function(i) {
+            var level = parseInt(map.charAt(i), 10);
+            var cls = classes[level] || classes[0];
+            $(this).removeClass(classes.join(" "));
+            $(this).addClass(cls).attr("data-type", level);
+        });
+        $("#motion-map").val(map);
+        return true;
+    }
+
+    function recommendMotionCountsText(counts) {
+        var labels = {"0": "off", "1": "minimal", "2": "low", "3": "average", "4": "high", "5": "very high"};
+        var parts = [];
+        $.each(labels, function(level, label) {
+            if (counts && counts[level] !== undefined) parts.push(label + ": " + counts[level]);
+        });
+        return parts.join(", ");
+    }
+
+    $("#auto-motion-scan-mode").off("change.recommendMotionMode").on("change.recommendMotionMode", function() {
+        var deep = $(this).val() === "deep";
+        $("#auto-motion-deep-hours").prop("disabled", !deep);
+        $("#auto-motion-status").removeClass("text-danger text-success").addClass("text-muted")
+            .text(deep ? "Deep Scan samples 24-168 hours and may take several minutes." : "Quick Scan uses recent recordings. Review/edit, then click Save Changes.");
+    });
+
+    $("#auto-motion-detect").off("click.recommendMotion").on("click.recommendMotion", function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var button = $(this);
+        var status = $("#auto-motion-status");
+        var id = $("#motion-submit").find("input[name=id]").val();
+        var mode = $("#auto-motion-scan-mode").val();
+        var deepHours = parseInt($("#auto-motion-deep-hours").val(), 10) || 24;
+        button.button("loading");
+        if (mode === "deep") {
+            deepHours = Math.max(24, Math.min(168, deepHours));
+            $("#auto-motion-deep-hours").val(deepHours);
+            if (!confirm("Deep Scan will analyze recordings across " + deepHours + " hours and may take several minutes. Continue?")) {
+                button.button("reset");
                 return false;
             }
-            cells.each(function(i) {
-                var level = parseInt(map.charAt(i), 10);
-                var cls = classes[level] || classes[0];
-                $(this).removeClass(classes.join(' ')).addClass(cls).attr('data-type', level);
-            });
-            $('#motion-map').val(map);
-            return true;
+            status.removeClass("text-danger text-success").addClass("text-muted").text("Deep Scan analyzing " + deepHours + " hours of recordings...");
+        } else {
+            status.removeClass("text-danger text-success").addClass("text-muted").text("Quick Scan analyzing recent recordings...");
         }
-
-        function recommendMotionCountsText(counts) {
-            var labels = {'0': 'off', '1': 'minimal', '2': 'low', '3': 'average', '4': 'high', '5': 'very high'};
-            var parts = [];
-            $.each(labels, function(level, label) {
-                if (counts && counts[level] !== undefined) parts.push(label + ': ' + counts[level]);
-            });
-            return parts.join(', ');
-        }
-
-        $('#auto-motion-detect').off('click.recommendMotion').on('click.recommendMotion', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            var button = $(this);
-            var status = $('#auto-motion-status');
-            var id = $('#motion-submit').find('input[name="id"]').val();
-            button.button('loading');
-            status.removeClass('text-danger text-success').addClass('text-muted').text('Analyzing recent recordings...');
-            $.ajax({
-                type: 'POST',
-                url: '/ajax/automotionmap.php',
-                dataType: 'json',
-                data: {
-                    id: id,
-                    sensitivity: $('#auto-motion-sensitivity').val(),
-                    noise_suppression: $('#auto-motion-noise').val(),
-                    samples: 2,
-                    frames_per_video: 2
-                }
-            }).done(function(msg) {
-                if (parseInt(msg.status, 10) === 6 && msg.data && recommendMotionApplyToGrid(msg.data.motion_map)) {
-                    status.removeClass('text-muted text-danger').addClass('text-success')
-                        .text('Loaded recommendation. Review/edit the grid, then click Save Changes. Proposed: ' + recommendMotionCountsText(msg.data.proposed_counts));
-                    if ($.notify) $.notify({icon: 'fa fa-check fa-fw', message: msg.msg}, {type: 'success', delay: 6000});
-                } else {
-                    status.removeClass('text-muted text-success').addClass('text-danger').text((msg && msg.msg) ? msg.msg : 'Recommendation failed.');
-                    if ($.notify) $.notify({icon: 'fa fa-times-circle fa-fw', message: (msg && msg.msg) ? msg.msg : 'Recommendation failed.'}, {type: 'danger', delay: 8000});
-                }
-            }).fail(function(xhr) {
-                var message = 'Recommendation request failed.';
-                if (xhr && xhr.responseText) message += ' ' + xhr.responseText.substring(0, 180);
-                status.removeClass('text-muted text-success').addClass('text-danger').text(message);
-                if ($.notify) $.notify({icon: 'fa fa-times-circle fa-fw', message: message}, {type: 'danger', delay: 8000});
-            }).always(function() {
-                button.button('reset');
-            });
+        $.ajax({
+            type: "POST",
+            url: "/ajax/automotionmap.php",
+            dataType: "json",
+            data: {
+                id: id,
+                sensitivity: $("#auto-motion-sensitivity").val(),
+                noise_suppression: $("#auto-motion-noise").val(),
+                scan_mode: mode,
+                deep_hours: deepHours,
+                samples: (mode === "deep" ? 24 : 2),
+                frames_per_video: (mode === "deep" ? 3 : 2)
+            }
+        }).done(function(msg) {
+            if (parseInt(msg.status, 10) === 6 && msg.data && recommendMotionApplyToGrid(msg.data.motion_map)) {
+                status.removeClass("text-muted text-danger").addClass("text-success")
+                    .text("Loaded recommendation. Review/edit the grid, then click Save Changes. Proposed: " + recommendMotionCountsText(msg.data.proposed_counts));
+                if ($.notify) $.notify({icon: "fa fa-check fa-fw", message: msg.msg}, {type: "success", delay: 6000});
+            } else {
+                status.removeClass("text-muted text-success").addClass("text-danger").text((msg && msg.msg) ? msg.msg : "Recommendation failed.");
+                if ($.notify) $.notify({icon: "fa fa-times-circle fa-fw", message: (msg && msg.msg) ? msg.msg : "Recommendation failed."}, {type: "danger", delay: 8000});
+            }
+        }).fail(function(xhr) {
+            var message = "Recommendation request failed.";
+            if (xhr && xhr.responseText) message += " " + xhr.responseText.substring(0, 180);
+            status.removeClass("text-muted text-success").addClass("text-danger").text(message);
+            if ($.notify) $.notify({icon: "fa fa-times-circle fa-fw", message: message}, {type: "danger", delay: 8000});
+        }).always(function() {
+            button.button("reset");
         });
-        /* Recommend Motion Sensitivity inline: end */
-'''
-        close = "    });\n\");"
-        if close not in tpl:
-            raise SystemExit("Could not find motion map addJs closing point")
-        template.write_text(tpl.replace(close, inline + "\n" + close, 1))
+    });
+    /* Recommend Motion Sensitivity nowdoc: end */
+});
+JS
+);
+"""
+        pos = tpl.rfind("?>")
+        if pos == -1:
+            raise SystemExit("Could not find PHP close tag")
+        template.write_text(tpl[:pos] + nowdoc + "\n" + tpl[pos:])
 
     print("Installed Bluecherry auto motion UI.")
     print("Backups stamped: {}".format(stamp))

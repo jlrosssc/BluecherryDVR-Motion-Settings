@@ -40,6 +40,12 @@ Run a dry-run analysis:
 bluecherry-motion-optimizer analyze --camera 1 --sensitivity 5 --noise-suppression 5
 ```
 
+Run a deep scan over a time window:
+
+```bash
+bluecherry-motion-optimizer analyze --camera 1 --sensitivity 5 --noise-suppression 5 --lookback-hours 72 --samples 24 --frames-per-video 3
+```
+
 Apply the proposed map to the Bluecherry database:
 
 ```bash
@@ -62,9 +68,13 @@ Then open Bluecherry:
 
 1. Go to the camera motion-map settings page.
 2. Set **Sensitivity** and **Noise Filter**.
-3. Click **Recommend Motion Sensitivity**.
-4. Review and edit the grid.
-5. Click Bluecherry's normal **Save Changes** button.
+3. Choose **Quick Scan** or **Deep Scan**.
+4. For **Deep Scan**, choose `24-168` hours. It may take several minutes because it samples recordings across that time window.
+5. Click **Recommend Motion Sensitivity**.
+6. Review and edit the grid.
+7. Click Bluecherry's normal **Save Changes** button.
+
+Quick Scan uses the newest recordings and is intended for a fast first pass. Deep Scan spreads samples across the selected lookback window and usually gives a better recommendation when the camera has enough representative recordings.
 
 ## Tuning
 

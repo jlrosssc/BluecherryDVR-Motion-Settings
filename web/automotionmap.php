@@ -11,17 +11,23 @@ class automotionmap extends Controller {
         $id = isset($_POST['id']) ? intval($_POST['id']) : 0;
         $sensitivity = isset($_POST['sensitivity']) ? intval($_POST['sensitivity']) : 5;
         $noise = isset($_POST['noise_suppression']) ? intval($_POST['noise_suppression']) : 5;
-        $samples = isset($_POST['samples']) ? intval($_POST['samples']) : 4;
-        $frames = isset($_POST['frames_per_video']) ? intval($_POST['frames_per_video']) : 4;
+        $mode = isset($_POST['scan_mode']) ? preg_replace('/[^a-z]/', '', strtolower($_POST['scan_mode'])) : 'quick';
+        $deep_hours = isset($_POST['deep_hours']) ? intval($_POST['deep_hours']) : 24;
+        $samples = isset($_POST['samples']) ? intval($_POST['samples']) : (($mode === 'deep') ? 24 : 2);
+        $frames = isset($_POST['frames_per_video']) ? intval($_POST['frames_per_video']) : (($mode === 'deep') ? 3 : 2);
 
         if ($id < 1 || $sensitivity < 1 || $sensitivity > 10 || $noise < 0 || $noise > 10) {
             $this->json(false, 'Invalid auto-detect request');
         }
 
-        $samples = max(1, min(12, $samples));
+        if ($mode !== 'deep') {
+            $mode = 'quick';
+        }
+        $deep_hours = max(24, min(168, $deep_hours));
+        $samples = max(1, min(36, $samples));
         $frames = max(2, min(12, $frames));
 
-        if (is_executable('/usr/local/sbin/bluecherry-auto-motion-helper')) {
+        if ($mode === 'quick' && is_executable('/usr/local/sbin/bluecherry-auto-motion-helper')) {
             $cmd = '/usr/local/sbin/bluecherry-auto-motion-helper '
                 . escapeshellarg((string)$id) . ' '
                 . escapeshellarg((string)$sensitivity) . ' '
@@ -38,6 +44,9 @@ class automotionmap extends Controller {
                 . '--frames-per-video ' . escapeshellarg((string)$frames) . ' '
                 . '--work-dir ' . escapeshellarg('/var/lib/bluecherry/motion-optimizer') . ' '
                 . '--stdout-json';
+            if ($mode === 'deep') {
+                $cmd .= ' --lookback-hours ' . escapeshellarg((string)$deep_hours);
+            }
         }
 
         $output = array();

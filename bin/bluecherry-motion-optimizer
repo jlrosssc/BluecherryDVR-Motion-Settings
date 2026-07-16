@@ -151,7 +151,64 @@ def shell_quote_single(value):
     return "'" + value.replace("'", "'\"'\"'") + "'"
 
 
-def copy_recent_recordings(camera_id, sample_dir, sample_count):
+def recording_timestamp(path):
+    parts = path.parts
+    for index in range(len(parts) - 5):
+        year, month, day, camera, filename = parts[index:index + 5]
+        match = re.match(r"^(\d{2})-(\d{2})-(\d{2})", filename)
+        if not match:
+            continue
+        if not (year.isdigit() and month.isdigit() and day.isdigit() and camera.isdigit()):
+            continue
+        try:
+            return dt.datetime(
+                int(year),
+                int(month),
+                int(day),
+                int(match.group(1)),
+                int(match.group(2)),
+                int(match.group(3)),
+            )
+        except ValueError:
+            return None
+    return None
+
+
+def choose_evenly_spaced(paths, count):
+    paths = list(paths)
+    if len(paths) <= count:
+        return paths
+    if count <= 1:
+        return [paths[-1]]
+    selected = []
+    last_index = len(paths) - 1
+    for i in range(count):
+        index = int(round(i * last_index / float(count - 1)))
+        selected.append(paths[index])
+    return selected
+
+
+def select_recordings(paths, sample_count, lookback_hours=None):
+    now = dt.datetime.now()
+    stamped = []
+    for path in paths:
+        timestamp = recording_timestamp(path)
+        if timestamp is None:
+            timestamp = dt.datetime.fromtimestamp(path.stat().st_mtime)
+        stamped.append((timestamp, path))
+    stamped.sort(key=lambda item: item[0])
+
+    if lookback_hours:
+        cutoff = now - dt.timedelta(hours=int(lookback_hours))
+        window = [(timestamp, path) for timestamp, path in stamped if timestamp >= cutoff]
+        if window:
+            stamped = window
+        return [path for _timestamp, path in choose_evenly_spaced(stamped, int(sample_count))]
+
+    return [path for _timestamp, path in stamped[-int(sample_count):]]
+
+
+def copy_recent_recordings(camera_id, sample_dir, sample_count, lookback_hours=None):
     sample_dir.mkdir(parents=True, exist_ok=True)
     for old in sample_dir.glob("*"):
         if old.is_file():
@@ -174,7 +231,8 @@ def copy_recent_recordings(camera_id, sample_dir, sample_count):
             direct_files = []
 
     if direct_files:
-        for index, source in enumerate(sorted(direct_files)[-int(sample_count):], 1):
+        selected_files = select_recordings(direct_files, sample_count, lookback_hours)
+        for index, source in enumerate(selected_files, 1):
             target = sample_dir / "sample_{}{}".format(index, source.suffix.lower())
             shutil.copy2(str(source), str(target))
             try:
@@ -186,13 +244,22 @@ def copy_recent_recordings(camera_id, sample_dir, sample_count):
     if shutil.which("docker") is None:
         raise RuntimeError("Recordings are not directly readable and docker is not available")
 
+    if lookback_hours:
+        script_filter = "awk -v cutoff=$(date -d '-{hours} hours' +%s) '{{ cmd=\"stat -c %Y \\\"\"$0\"\\\"\"; cmd | getline m; close(cmd); if (m >= cutoff) print $0; }}' | ".format(hours=int(lookback_hours))
+        script_select = "awk -v n={count} '{{ a[++c]=$0 }} END {{ if (c <= n) {{ for (i=1; i<=c; i++) print a[i]; }} else {{ for (i=1; i<=n; i++) {{ idx=int((i-1)*(c-1)/(n-1)+1.5); print a[idx]; }} }} }}' | ".format(count=int(sample_count))
+    else:
+        script_filter = ""
+        script_select = "tail -n {count} | ".format(count=int(sample_count))
+
     script = (
         "set -eu; "
         "i=0; "
-        "find /recordings -type f -path '*/{camera}/*' | grep -Ei '\\.(mkv|mp4|avi|mov)$' | sort | tail -n {count} | "
+        "find /recordings -type f -path '*/{camera}/*' | grep -Ei '\\.(mkv|mp4|avi|mov)$' | sort | "
+        "{script_filter}"
+        "{script_select}"
         "while IFS= read -r f; do i=$((i+1)); ext=\"${{f##*.}}\"; cp \"$f\" \"/work/sample_${{i}}.${{ext}}\"; done; "
         "chmod 0644 /work/* 2>/dev/null || true"
-    ).format(camera=camera_dir, count=int(sample_count))
+    ).format(camera=camera_dir, script_filter=script_filter, script_select=script_select)
 
     cmd = [
         "docker",
@@ -481,7 +548,7 @@ def cmd_analyze(args):
     if args.sample_dir:
         video_files = sorted(Path(args.sample_dir).expanduser().glob("*"))
     else:
-        video_files = copy_recent_recordings(camera["id"], sample_dir, args.samples)
+        video_files = copy_recent_recordings(camera["id"], sample_dir, args.samples, args.lookback_hours)
 
     frame_paths = extract_gray_frames(video_files, frame_dir, args.frames_per_video, args.frame_width, args.frame_height)
     keep_zones = parse_zones(args.keep_zone)
@@ -516,6 +583,7 @@ def cmd_analyze(args):
         "sensitivity": args.sensitivity,
         "noise_suppression": args.noise_suppression,
         "samples": [str(path) for path in video_files],
+        "lookback_hours": args.lookback_hours,
         "frame_count": len(frame_paths),
         "current_counts": counts_for_map(camera["motion_map"]),
         "proposed_counts": counts_for_map(proposed_map),
@@ -557,6 +625,7 @@ def build_parser():
     analyze.add_argument("--work-dir", default=DEFAULT_WORK_DIR)
     analyze.add_argument("--sample-dir", help="Use existing readable video samples instead of Docker-copying recent recordings")
     analyze.add_argument("--samples", type=int, default=6)
+    analyze.add_argument("--lookback-hours", type=int, help="Deep-scan lookback window in hours")
     analyze.add_argument("--frames-per-video", type=int, default=6)
     analyze.add_argument("--frame-width", type=int, default=320)
     analyze.add_argument("--frame-height", type=int, default=240)
