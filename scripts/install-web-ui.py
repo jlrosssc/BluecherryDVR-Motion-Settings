@@ -137,8 +137,21 @@ def install(args):
 
     tpl = template.read_text()
     background_marker = "/* Recommend Motion Sensitivity background job: start */"
-    if background_marker not in tpl:
-        background = (repo / "web/background_job_ui.phpfrag").read_text()
+    background_end_marker = "/* Recommend Motion Sensitivity background job: end */"
+    background = (repo / "web/background_job_ui.phpfrag").read_text()
+    if background_marker in tpl and background_end_marker in tpl:
+        start = tpl.find("\naddJs(<<<'JS'\n$(function() {\n    " + background_marker)
+        end = tpl.find(background_end_marker, start)
+        if start != -1 and end != -1:
+            close = "\nJS\n);\n"
+            end = tpl.find(close, end)
+            if end != -1:
+                close_end = end + len(close)
+                while tpl.startswith("JS\n);\n", close_end):
+                    close_end += len("JS\n);\n")
+                tpl = tpl[:start] + "\n" + background + "\n" + tpl[close_end:]
+                template.write_text(tpl)
+    else:
         pos = tpl.rfind("?>")
         if pos == -1:
             raise SystemExit("Could not find PHP close tag")

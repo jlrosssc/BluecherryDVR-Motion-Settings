@@ -26,6 +26,21 @@ $(function() {
         return parts.join(", ");
     }
 
+    function recommendMotionProgressText(progress) {
+        if (!progress) return "Recommendation scan is still running...";
+        var text = progress.message || "Recommendation scan is still running...";
+        if (progress.current !== undefined && progress.total !== undefined && parseInt(progress.total, 10) > 0) {
+            text += " (" + progress.current + " of " + progress.total + ")";
+        }
+        if (progress.candidate_count !== undefined) {
+            text += " Found " + progress.candidate_count + " recordings in the selected window.";
+        }
+        if (progress.updated_at) {
+            text += " Updated " + progress.updated_at + ".";
+        }
+        return text;
+    }
+
     function recommendMotionStorageKey() {
         var id = $("#motion-submit").find("input[name=id]").val() || "unknown";
         return "bluecherryRecommendMotionJob:" + id;
@@ -47,7 +62,7 @@ $(function() {
                     if ($.notify) $.notify({icon: "fa fa-check fa-fw", message: msg.msg}, {type: "success", delay: 6000});
                 }
             } else if (parseInt(msg.status, 10) === 6 && msg.data && msg.data.state === "running") {
-                status.removeClass("text-danger text-success").addClass("text-muted").text("Recommendation scan is still running...");
+                status.removeClass("text-danger text-success").addClass("text-muted").text(recommendMotionProgressText(msg.data.progress));
                 setTimeout(function() { recommendMotionPoll(jobId); }, 5000);
             } else {
                 localStorage.removeItem(recommendMotionStorageKey());

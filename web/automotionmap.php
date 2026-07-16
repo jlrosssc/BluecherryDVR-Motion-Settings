@@ -78,15 +78,6 @@ class automotionmap extends Controller {
 
     private function buildCommand($id, $sensitivity, $noise, $mode, $deep_hours, $samples, $frames)
     {
-        if ($mode === 'quick' && is_executable('/usr/local/sbin/bluecherry-auto-motion-helper')) {
-            return '/usr/local/sbin/bluecherry-auto-motion-helper '
-                . escapeshellarg((string)$id) . ' '
-                . escapeshellarg((string)$sensitivity) . ' '
-                . escapeshellarg((string)$noise) . ' '
-                . escapeshellarg((string)$samples) . ' '
-                . escapeshellarg((string)$frames);
-        }
-
         $python = is_executable('/usr/bin/python3') ? '/usr/bin/python3' : 'python3';
         $cmd = $python . ' /usr/local/sbin/bluecherry-motion-optimizer-web analyze '
             . '--camera ' . escapeshellarg((string)$id) . ' '
@@ -130,7 +121,8 @@ class automotionmap extends Controller {
         }
 
         $shell = 'sh -c ' . escapeshellarg(
-            $cmd . ' > ' . escapeshellarg($base . '.result.json')
+            $cmd . ' --progress-file ' . escapeshellarg($base . '.progress.json')
+            . ' > ' . escapeshellarg($base . '.result.json')
             . ' 2> ' . escapeshellarg($base . '.error.log')
             . '; rc=$?; echo $rc > ' . escapeshellarg($base . '.exit')
         ) . ' > /dev/null 2>&1 &';
@@ -150,11 +142,13 @@ class automotionmap extends Controller {
         }
 
         $base = $this->jobsDir() . '/' . $job_id;
+        $progress = $this->readProgress($base);
         $exit_file = $base . '.exit';
         if (!file_exists($exit_file)) {
             $this->json(true, 'Recommendation scan is still running.', array(
                 'job_id' => $job_id,
-                'state' => 'running'
+                'state' => 'running',
+                'progress' => $progress
             ));
         }
 
@@ -163,7 +157,8 @@ class automotionmap extends Controller {
             $error = file_exists($base . '.error.log') ? trim(file_get_contents($base . '.error.log')) : '';
             $this->json(false, 'Recommendation scan failed: ' . substr($error, 0, 500), array(
                 'job_id' => $job_id,
-                'state' => 'failed'
+                'state' => 'failed',
+                'progress' => $progress
             ));
         }
 
@@ -172,7 +167,8 @@ class automotionmap extends Controller {
         if (!is_array($payload) || empty($payload['proposed_motion_map'])) {
             $this->json(false, 'Recommendation scan returned invalid data', array(
                 'job_id' => $job_id,
-                'state' => 'failed'
+                'state' => 'failed',
+                'progress' => $progress
             ));
         }
 
@@ -180,7 +176,8 @@ class automotionmap extends Controller {
         if (!preg_match('/^[0-5]+$/', $map)) {
             $this->json(false, 'Recommendation scan returned invalid motion map', array(
                 'job_id' => $job_id,
-                'state' => 'failed'
+                'state' => 'failed',
+                'progress' => $progress
             ));
         }
 
@@ -192,8 +189,20 @@ class automotionmap extends Controller {
             'current_counts' => isset($payload['current_counts']) ? $payload['current_counts'] : array(),
             'proposed_counts' => isset($payload['proposed_counts']) ? $payload['proposed_counts'] : array(),
             'report' => isset($payload['json_report']) ? $payload['json_report'] : '',
-            'preview' => isset($payload['preview_svg']) ? $payload['preview_svg'] : ''
+            'preview' => isset($payload['preview_svg']) ? $payload['preview_svg'] : '',
+            'progress' => $progress
         ));
+    }
+
+    private function readProgress($base)
+    {
+        $file = $base . '.progress.json';
+        if (!file_exists($file)) {
+            return array();
+        }
+        $raw = trim(file_get_contents($file));
+        $progress = json_decode($raw, true);
+        return is_array($progress) ? $progress : array();
     }
 
     private function json($ok, $message, $data = array())
