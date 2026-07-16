@@ -105,8 +105,11 @@ class automotionmap extends Controller {
     private function jobsDir()
     {
         $dir = '/var/lib/bluecherry/motion-optimizer/jobs';
-        if (!is_dir($dir)) {
-            mkdir($dir, 0775, true);
+        if (!is_dir($dir) && !mkdir($dir, 0775, true)) {
+            $this->json(false, 'Could not create recommendation job directory');
+        }
+        if (!is_writable($dir)) {
+            $this->json(false, 'Recommendation job directory is not writable');
         }
         return $dir;
     }
@@ -116,12 +119,15 @@ class automotionmap extends Controller {
         $dir = $this->jobsDir();
         $job_id = date('YmdHis') . '-' . bin2hex(random_bytes(4));
         $base = $dir . '/' . $job_id;
-        file_put_contents($base . '.meta.json', json_encode(array(
+        $meta_written = file_put_contents($base . '.meta.json', json_encode(array(
             'job_id' => $job_id,
             'started_at' => date('c'),
             'state' => 'running',
             'request' => $meta
         )));
+        if ($meta_written === false) {
+            $this->json(false, 'Could not write recommendation job metadata');
+        }
 
         $shell = 'sh -c ' . escapeshellarg(
             $cmd . ' > ' . escapeshellarg($base . '.result.json')
