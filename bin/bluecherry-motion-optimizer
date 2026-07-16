@@ -26,6 +26,7 @@ RECORDINGS_ROOT = "/var/lib/bluecherry/recordings"
 FFMPEG = "/usr/lib/bluecherry/ffmpeg"
 DEFAULT_WORK_DIR = str(Path.home() / "bluecherry-motion-optimizer")
 VIDEO_EXTENSIONS = (".mkv", ".mp4", ".avi", ".mov")
+PROGRESS_CONTEXT = {}
 
 
 COLORS = {
@@ -76,10 +77,20 @@ def write_progress(path, state, message, **fields):
         "message": message,
         "updated_at": friendly_now(),
     }
+    payload.update(PROGRESS_CONTEXT)
     payload.update(fields)
     tmp_path = progress_path.with_suffix(progress_path.suffix + ".tmp")
     tmp_path.write_text(json.dumps(payload, sort_keys=True) + "\n")
     tmp_path.replace(progress_path)
+
+
+def set_progress_context(**fields):
+    PROGRESS_CONTEXT.clear()
+    PROGRESS_CONTEXT.update(fields)
+
+
+def clear_progress_context():
+    PROGRESS_CONTEXT.clear()
 
 
 def read_bluecherry_config(path=CONFIG_PATH):
@@ -906,20 +917,35 @@ def cmd_optimize_all(args):
     rows = list_cameras(cfg)
     cameras = [get_camera(cfg, int(row[0])) for row in rows]
     results = []
+    completed_camera_ids = []
+    failed_camera_ids = []
     total = len(cameras)
     for index, camera in enumerate(cameras, 1):
+        set_progress_context(
+            all_camera_position=index,
+            all_camera_count=total,
+            camera_id=camera["id"],
+            camera_name=camera["name"],
+            completed_camera_ids=list(completed_camera_ids),
+            failed_camera_ids=list(failed_camera_ids),
+        )
         write_progress(
             args.progress_file,
             "all_cameras",
             "Optimizing camera {} of {}: {}".format(index, total, camera["name"]),
-            current=index,
-            total=total,
             phase="all_cameras",
-            camera_id=camera["id"],
-            camera_name=camera["name"],
         )
         try:
             payload = analyze_camera(cfg, camera, args, final_progress=False)
+            completed_camera_ids.append(camera["id"])
+            set_progress_context(
+                all_camera_position=index,
+                all_camera_count=total,
+                camera_id=camera["id"],
+                camera_name=camera["name"],
+                completed_camera_ids=list(completed_camera_ids),
+                failed_camera_ids=list(failed_camera_ids),
+            )
             results.append({
                 "camera_id": camera["id"],
                 "camera_name": camera["name"],
@@ -932,14 +958,19 @@ def cmd_optimize_all(args):
                 args.progress_file,
                 "all_cameras",
                 "Saved optimized settings for camera {} of {}: {}".format(index, total, camera["name"]),
-                current=index,
-                total=total,
                 phase="all_cameras",
-                camera_id=camera["id"],
-                camera_name=camera["name"],
                 camera_state="saved",
             )
         except Exception as exc:
+            failed_camera_ids.append(camera["id"])
+            set_progress_context(
+                all_camera_position=index,
+                all_camera_count=total,
+                camera_id=camera["id"],
+                camera_name=camera["name"],
+                completed_camera_ids=list(completed_camera_ids),
+                failed_camera_ids=list(failed_camera_ids),
+            )
             results.append({
                 "camera_id": camera["id"],
                 "camera_name": camera["name"],
@@ -950,11 +981,7 @@ def cmd_optimize_all(args):
                 args.progress_file,
                 "all_cameras",
                 "Skipped camera {} of {}: {} ({})".format(index, total, camera["name"], exc),
-                current=index,
-                total=total,
                 phase="all_cameras",
-                camera_id=camera["id"],
-                camera_name=camera["name"],
                 camera_state="failed",
             )
 
@@ -974,16 +1001,21 @@ def cmd_optimize_all(args):
     report_json = output_dir / "all-cameras-optimized-{}.json".format(stamp)
     report_json.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     payload["json_report"] = str(report_json)
+    set_progress_context(
+        all_camera_position=total,
+        all_camera_count=total,
+        completed_camera_ids=list(completed_camera_ids),
+        failed_camera_ids=list(failed_camera_ids),
+    )
     write_progress(
         args.progress_file,
         "complete",
         "All-camera optimization complete. Saved {}, failed {}.".format(saved, failed),
-        current=total,
-        total=total,
         phase="complete",
         saved_count=saved,
         failed_count=failed,
     )
+    clear_progress_context()
     if args.stdout_json:
         print(json.dumps(payload, sort_keys=True))
     else:

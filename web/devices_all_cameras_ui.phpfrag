@@ -8,9 +8,27 @@ $(function() {
 
     function allMotionStatusText(progress) {
         if (!progress) return "All-camera optimized scan is running...";
-        var text = progress.message || "All-camera optimized scan is running...";
+        var parts = [];
+        if (progress.all_camera_position !== undefined && progress.all_camera_count !== undefined) {
+            var cameraText = "Camera " + progress.all_camera_position + " of " + progress.all_camera_count;
+            if (progress.camera_id !== undefined) {
+                cameraText += " - ID " + progress.camera_id;
+            }
+            if (progress.camera_name) {
+                cameraText += " " + progress.camera_name;
+            }
+            parts.push(cameraText);
+        }
+        parts.push(progress.message || "All-camera optimized scan is running...");
+        var text = parts.join(": ");
         if (progress.current !== undefined && progress.total !== undefined) {
             text += " (" + progress.current + " of " + progress.total + ")";
+        }
+        if (progress.completed_camera_ids && progress.completed_camera_ids.length) {
+            text += " Completed camera IDs: " + progress.completed_camera_ids.join(", ") + ".";
+        }
+        if (progress.failed_camera_ids && progress.failed_camera_ids.length) {
+            text += " Failed camera IDs: " + progress.failed_camera_ids.join(", ") + ".";
         }
         if (progress.updated_at) {
             text += " Updated " + progress.updated_at + ".";
