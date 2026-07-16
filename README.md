@@ -76,6 +76,8 @@ Then open Bluecherry:
 
 Quick Scan uses the newest recordings and is intended for a fast first pass. Deep Scan spreads samples across the selected lookback window and usually gives a better recommendation when the camera has enough representative recordings.
 
+Recommendation scans run as background jobs on the Bluecherry server. The web page polls for status and stores the active job id in the browser for that camera, so a long Deep Scan can continue even if the browser briefly disconnects. If the computer sleeps, reopen the same motion-map page and the page will try to reconnect to the last scan for that camera.
+
 ## Tuning
 
 `--sensitivity` accepts `1-10`.

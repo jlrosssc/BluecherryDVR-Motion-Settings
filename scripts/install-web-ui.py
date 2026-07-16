@@ -219,6 +219,15 @@ JS
             raise SystemExit("Could not find PHP close tag")
         template.write_text(tpl[:pos] + nowdoc + "\n" + tpl[pos:])
 
+    tpl = template.read_text()
+    background_marker = "/* Recommend Motion Sensitivity background job: start */"
+    if background_marker not in tpl:
+        background = (repo / "web/background_job_ui.phpfrag").read_text()
+        pos = tpl.rfind("?>")
+        if pos == -1:
+            raise SystemExit("Could not find PHP close tag")
+        template.write_text(tpl[:pos] + "\n" + background + "\n" + tpl[pos:])
+
     print("Installed Bluecherry auto motion UI.")
     print("Backups stamped: {}".format(stamp))
 

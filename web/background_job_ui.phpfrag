@@ -1,0 +1,122 @@
+addJs(<<<'JS'
+$(function() {
+    /* Recommend Motion Sensitivity background job: start */
+    function recommendMotionApplyToGrid(map) {
+        var cells = $(".grid-bl .table-grid td");
+        var classes = ["bg-default", "bg-success", "bg-info", "bg-primary", "bg-warning", "bg-danger"];
+        if (!map || cells.length !== map.length) {
+            $("#auto-motion-status").removeClass("text-muted text-success").addClass("text-danger").text("Recommended map does not match this camera grid.");
+            return false;
+        }
+        cells.each(function(i) {
+            var level = parseInt(map.charAt(i), 10);
+            var cls = classes[level] || classes[0];
+            $(this).removeClass(classes.join(" ")).addClass(cls).attr("data-type", level);
+        });
+        $("#motion-map").val(map);
+        return true;
+    }
+
+    function recommendMotionCountsText(counts) {
+        var labels = {"0": "off", "1": "minimal", "2": "low", "3": "average", "4": "high", "5": "very high"};
+        var parts = [];
+        $.each(labels, function(level, label) {
+            if (counts && counts[level] !== undefined) parts.push(label + ": " + counts[level]);
+        });
+        return parts.join(", ");
+    }
+
+    function recommendMotionStorageKey() {
+        var id = $("#motion-submit").find("input[name=id]").val() || "unknown";
+        return "bluecherryRecommendMotionJob:" + id;
+    }
+
+    function recommendMotionPoll(jobId) {
+        var status = $("#auto-motion-status");
+        $.ajax({
+            type: "POST",
+            url: "/ajax/automotionmap.php",
+            dataType: "json",
+            data: {action: "status", job_id: jobId}
+        }).done(function(msg) {
+            if (parseInt(msg.status, 10) === 6 && msg.data && msg.data.state === "complete") {
+                localStorage.removeItem(recommendMotionStorageKey());
+                if (recommendMotionApplyToGrid(msg.data.motion_map)) {
+                    status.removeClass("text-muted text-danger").addClass("text-success")
+                        .text("Loaded recommendation. Review/edit the grid, then click Save Changes. Proposed: " + recommendMotionCountsText(msg.data.proposed_counts));
+                    if ($.notify) $.notify({icon: "fa fa-check fa-fw", message: msg.msg}, {type: "success", delay: 6000});
+                }
+            } else if (parseInt(msg.status, 10) === 6 && msg.data && msg.data.state === "running") {
+                status.removeClass("text-danger text-success").addClass("text-muted").text("Recommendation scan is still running...");
+                setTimeout(function() { recommendMotionPoll(jobId); }, 5000);
+            } else {
+                localStorage.removeItem(recommendMotionStorageKey());
+                status.removeClass("text-muted text-success").addClass("text-danger").text((msg && msg.msg) ? msg.msg : "Recommendation scan failed.");
+                if ($.notify) $.notify({icon: "fa fa-times-circle fa-fw", message: (msg && msg.msg) ? msg.msg : "Recommendation scan failed."}, {type: "danger", delay: 8000});
+            }
+        }).fail(function() {
+            status.removeClass("text-success").addClass("text-muted").text("Waiting to reconnect to recommendation scan...");
+            setTimeout(function() { recommendMotionPoll(jobId); }, 10000);
+        });
+    }
+
+    $("#auto-motion-detect").off("click.recommendMotion").on("click.recommendMotion", function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var button = $(this);
+        var status = $("#auto-motion-status");
+        var id = $("#motion-submit").find("input[name=id]").val();
+        var mode = $("#auto-motion-scan-mode").val();
+        var deepHours = parseInt($("#auto-motion-deep-hours").val(), 10) || 24;
+        button.button("loading");
+        if (mode === "deep") {
+            deepHours = Math.max(24, Math.min(168, deepHours));
+            $("#auto-motion-deep-hours").val(deepHours);
+            if (!confirm("Deep Scan will start a background job across " + deepHours + " hours and may take several minutes. Continue?")) {
+                button.button("reset");
+                return false;
+            }
+            status.removeClass("text-danger text-success").addClass("text-muted").text("Starting Deep Scan background job...");
+        } else {
+            status.removeClass("text-danger text-success").addClass("text-muted").text("Starting Quick Scan background job...");
+        }
+        $.ajax({
+            type: "POST",
+            url: "/ajax/automotionmap.php",
+            dataType: "json",
+            data: {
+                action: "start",
+                id: id,
+                sensitivity: $("#auto-motion-sensitivity").val(),
+                noise_suppression: $("#auto-motion-noise").val(),
+                scan_mode: mode,
+                deep_hours: deepHours,
+                samples: (mode === "deep" ? 24 : 2),
+                frames_per_video: (mode === "deep" ? 3 : 2)
+            }
+        }).done(function(msg) {
+            if (parseInt(msg.status, 10) === 6 && msg.data && msg.data.job_id) {
+                localStorage.setItem(recommendMotionStorageKey(), msg.data.job_id);
+                status.removeClass("text-danger text-success").addClass("text-muted").text("Recommendation scan started. Waiting for results...");
+                recommendMotionPoll(msg.data.job_id);
+            } else {
+                status.removeClass("text-muted text-success").addClass("text-danger").text((msg && msg.msg) ? msg.msg : "Could not start recommendation scan.");
+            }
+        }).fail(function(xhr) {
+            var message = "Could not start recommendation scan.";
+            if (xhr && xhr.responseText) message += " " + xhr.responseText.substring(0, 180);
+            status.removeClass("text-muted text-success").addClass("text-danger").text(message);
+        }).always(function() {
+            button.button("reset");
+        });
+    });
+
+    var previousJob = localStorage.getItem(recommendMotionStorageKey());
+    if (previousJob) {
+        $("#auto-motion-status").removeClass("text-danger text-success").addClass("text-muted").text("Checking previous recommendation scan...");
+        recommendMotionPoll(previousJob);
+    }
+    /* Recommend Motion Sensitivity background job: end */
+});
+JS
+);
