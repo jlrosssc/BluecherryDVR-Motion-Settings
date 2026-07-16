@@ -49,6 +49,11 @@ $(function() {
             }
         } else if (phase === "analyzing" && hasTotal && hasCurrent) {
             text = "Analyzing sample " + current + " of " + total + ".";
+        } else if (phase === "optimizing" && hasTotal && hasCurrent) {
+            text = "Optimized Scan reviewed " + current + " of up to " + total + " samples.";
+            if (progress.change_percent !== undefined) {
+                text += " Map changed " + progress.change_percent + "% in the latest batch.";
+            }
         } else if (phase === "mapping") {
             text = progress.message || "Building recommended motion map.";
         } else if (phase === "complete") {
@@ -105,18 +110,27 @@ $(function() {
         var deepHours = parseInt($("#auto-motion-deep-hours").val(), 10) || 24;
         var scanSamples = 2;
         button.button("loading");
-        if (mode === "deep") {
+        if (mode === "deep" || mode === "optimized") {
             deepHours = Math.max(24, Math.min(168, deepHours));
-            var samplesPerHour = parseInt($("#auto-motion-samples-per-hour").val(), 10) || 4;
-            samplesPerHour = Math.max(1, Math.min(8, samplesPerHour));
-            $("#auto-motion-samples-per-hour").val(samplesPerHour);
-            scanSamples = deepHours * samplesPerHour;
             $("#auto-motion-deep-hours").val(deepHours);
-            if (!confirm("Deep Scan will start a background job across " + deepHours + " hours at " + samplesPerHour + " samples per hour, up to " + scanSamples + " recordings. This may take several minutes. Continue?")) {
-                button.button("reset");
-                return false;
+            if (mode === "deep") {
+                var samplesPerHour = parseInt($("#auto-motion-samples-per-hour").val(), 10) || 4;
+                samplesPerHour = Math.max(1, Math.min(8, samplesPerHour));
+                $("#auto-motion-samples-per-hour").val(samplesPerHour);
+                scanSamples = deepHours * samplesPerHour;
+                if (!confirm("Deep Scan will start a background job across " + deepHours + " hours at " + samplesPerHour + " samples per hour, up to " + scanSamples + " recordings. This may take several minutes. Continue?")) {
+                    button.button("reset");
+                    return false;
+                }
+                status.removeClass("text-danger text-success").addClass("text-muted").text("Starting Deep Scan background job for up to " + scanSamples + " recordings...");
+            } else {
+                scanSamples = deepHours * 4;
+                if (!confirm("Optimized Scan will automatically sample recordings across " + deepHours + " hours and stop when the recommendation stabilizes. It may use up to " + scanSamples + " recordings. Continue?")) {
+                    button.button("reset");
+                    return false;
+                }
+                status.removeClass("text-danger text-success").addClass("text-muted").text("Starting Optimized Scan background job...");
             }
-            status.removeClass("text-danger text-success").addClass("text-muted").text("Starting Deep Scan background job for up to " + scanSamples + " recordings...");
         } else {
             status.removeClass("text-danger text-success").addClass("text-muted").text("Starting Quick Scan background job...");
         }
@@ -153,12 +167,14 @@ $(function() {
     });
 
     $("#auto-motion-scan-mode").off("change.recommendMotionMode").on("change.recommendMotionMode", function() {
-        var deep = $(this).val() === "deep";
-        $("#auto-motion-deep-hours").prop("disabled", !deep);
+        var mode = $(this).val();
+        var deep = mode === "deep";
+        var windowed = deep || mode === "optimized";
+        $("#auto-motion-deep-hours").prop("disabled", !windowed);
         $("#auto-motion-samples-per-hour").prop("disabled", !deep);
         $(".auto-motion-deep-option").toggle(deep);
         $("#auto-motion-status").removeClass("text-danger text-success").addClass("text-muted")
-            .text(deep ? "Deep Scan samples recordings across the selected hours. Review/edit, then click Save Changes." : "Quick Scan uses recent recordings. Review/edit, then click Save Changes.");
+            .text(mode === "optimized" ? "Optimized Scan samples until the recommendation stabilizes. Review/edit, then click Save Changes." : (deep ? "Deep Scan samples recordings across the selected hours. Review/edit, then click Save Changes." : "Quick Scan uses recent recordings. Review/edit, then click Save Changes."));
     }).trigger("change.recommendMotionMode");
 
     var previousJob = localStorage.getItem(recommendMotionStorageKey());

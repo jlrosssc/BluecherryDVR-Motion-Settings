@@ -88,10 +88,11 @@ def install(args):
                 <div class="form-group">
                     <label class="col-lg-2 col-md-2 control-label">Scan Type</label>
                     <div class="col-lg-3 col-md-3">
-                        <select class="form-control" id="auto-motion-scan-mode">
-                            <option value="quick" selected="selected">Quick Scan</option>
-                            <option value="deep">Deep Scan</option>
-                        </select>
+	                        <select class="form-control" id="auto-motion-scan-mode">
+	                            <option value="optimized" selected="selected">Optimized Scan</option>
+	                            <option value="quick">Quick Scan</option>
+	                            <option value="deep">Deep Scan</option>
+	                        </select>
                     </div>
 
                     <label class="col-lg-2 col-md-2 control-label">Deep Hours</label>
@@ -130,6 +131,10 @@ def install(args):
     tpl = tpl.replace(
         '<button type="button" class="btn btn-primary click-event" id="auto-motion-detect" data-function="autoMotionMapRun" data-loading-text="Analyzing...">',
         '<button type="button" class="btn btn-primary" id="auto-motion-detect" data-loading-text="Analyzing...">',
+    )
+    tpl = tpl.replace(
+        '<option value="quick" selected="selected">Quick Scan</option>\n                            <option value="deep">Deep Scan</option>',
+        '<option value="optimized" selected="selected">Optimized Scan</option>\n                            <option value="quick">Quick Scan</option>\n                            <option value="deep">Deep Scan</option>',
     )
     if 'id="auto-motion-samples-per-hour"' not in tpl:
         status_block = """                <div class="form-group">

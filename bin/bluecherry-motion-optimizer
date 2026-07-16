@@ -12,6 +12,7 @@ import datetime as dt
 import json
 import math
 import os
+import random
 import re
 import shutil
 import subprocess
@@ -204,7 +205,7 @@ def choose_evenly_spaced(paths, count):
     return selected
 
 
-def select_recordings(paths, sample_count, lookback_hours=None):
+def select_recordings(paths, sample_count, lookback_hours=None, randomize=False):
     now = dt.datetime.now()
     stamped = []
     for path in paths:
@@ -222,12 +223,18 @@ def select_recordings(paths, sample_count, lookback_hours=None):
         window = [(timestamp, path) for timestamp, path in stamped if timestamp >= cutoff]
         if window:
             stamped = window
+        if randomize:
+            count = min(int(sample_count), len(stamped))
+            return [path for _timestamp, path in random.sample(stamped, count)]
         return [path for _timestamp, path in choose_evenly_spaced(stamped, int(sample_count))]
 
+    if randomize:
+        count = min(int(sample_count), len(stamped))
+        return [path for _timestamp, path in random.sample(stamped, count)]
     return [path for _timestamp, path in stamped[-int(sample_count):]]
 
 
-def copy_recent_recordings(camera_id, sample_dir, sample_count, lookback_hours=None, progress_file=None):
+def copy_recent_recordings(camera_id, sample_dir, sample_count, lookback_hours=None, progress_file=None, randomize=False):
     sample_dir.mkdir(parents=True, exist_ok=True)
     for old in sample_dir.glob("*"):
         if old.is_file():
@@ -265,7 +272,7 @@ def copy_recent_recordings(camera_id, sample_dir, sample_count, lookback_hours=N
             direct_files = []
 
     if direct_files:
-        selected_files = select_recordings(direct_files, sample_count, lookback_hours)
+        selected_files = select_recordings(direct_files, sample_count, lookback_hours, randomize=randomize)
         candidate_count = len(direct_files)
         if lookback_hours:
             cutoff = dt.datetime.now() - dt.timedelta(hours=int(lookback_hours))
@@ -541,6 +548,119 @@ def build_map(frame_paths, cols, rows, frame_width, frame_height, sensitivity, n
     }
 
 
+def map_change_percent(previous, current):
+    if not previous or not current or len(previous) != len(current):
+        return 100.0
+    changed = sum(1 for left, right in zip(previous, current) if left != right)
+    return 100.0 * changed / float(len(current))
+
+
+def ordered_by_recording_time(paths):
+    def sort_key(path):
+        timestamp = recording_timestamp(path)
+        if timestamp is not None:
+            return timestamp
+        try:
+            return dt.datetime.fromtimestamp(path.stat().st_mtime)
+        except OSError:
+            return dt.datetime.min
+    return sorted(paths, key=sort_key)
+
+
+def optimized_build_map(video_files, frame_dir, args, cols, rows, keep_zones, exclude_zones):
+    max_samples = len(video_files)
+    if max_samples < 1:
+        raise RuntimeError("No recordings available for optimized analysis")
+    batch_size = min(max_samples, max(8, int(args.optimized_batch_size)))
+    min_samples = min(max_samples, max(batch_size, int(args.optimized_min_samples)))
+    threshold = float(args.optimized_stability_percent)
+    stable_needed = 2
+    stable_count = 0
+    previous_map = None
+    best_map = None
+    best_stats = None
+    best_frames = []
+    used_videos = []
+    history = []
+
+    current_count = min(batch_size, max_samples)
+    while True:
+        used_videos = ordered_by_recording_time(video_files[:current_count])
+        batch_frame_dir = frame_dir / "optimized-{}".format(current_count)
+        if batch_frame_dir.exists():
+            shutil.rmtree(str(batch_frame_dir))
+        write_progress(
+            args.progress_file,
+            "optimizing",
+            "Optimized Scan analyzing {} sampled recordings.".format(current_count),
+            current=current_count,
+            total=max_samples,
+            phase="optimizing",
+            stable_batches=stable_count,
+        )
+        frame_paths = extract_gray_frames(
+            used_videos,
+            batch_frame_dir,
+            args.frames_per_video,
+            args.frame_width,
+            args.frame_height,
+            args.progress_file,
+        )
+        proposed_map, stats = build_map(
+            frame_paths,
+            cols,
+            rows,
+            args.frame_width,
+            args.frame_height,
+            args.sensitivity,
+            args.noise_suppression,
+            keep_zones,
+            exclude_zones,
+        )
+        change = map_change_percent(previous_map, proposed_map) if previous_map is not None else 100.0
+        history.append({
+            "samples": current_count,
+            "frames": len(frame_paths),
+            "change_percent": round(change, 3),
+        })
+        best_map = proposed_map
+        best_stats = stats
+        best_frames = frame_paths
+
+        if previous_map is not None and current_count >= min_samples and change <= threshold:
+            stable_count += 1
+        else:
+            stable_count = 0
+
+        write_progress(
+            args.progress_file,
+            "optimizing",
+            "Optimized Scan batch complete. Map changed {:.2f}%.".format(change),
+            current=current_count,
+            total=max_samples,
+            phase="optimizing",
+            change_percent=round(change, 3),
+            stable_batches=stable_count,
+        )
+
+        if stable_count >= stable_needed or current_count >= max_samples:
+            break
+        previous_map = proposed_map
+        current_count = min(max_samples, current_count + batch_size)
+
+    return best_map, best_stats, best_frames, used_videos, {
+        "enabled": True,
+        "max_samples": max_samples,
+        "used_samples": len(used_videos),
+        "batch_size": batch_size,
+        "min_samples": min_samples,
+        "stability_percent": threshold,
+        "stable_batches_required": stable_needed,
+        "history": history,
+        "stopped_early": len(used_videos) < max_samples,
+    }
+
+
 def write_svg(path, motion_map, cols, rows, title):
     cell = 24
     legend_h = 74
@@ -657,22 +777,41 @@ def cmd_analyze(args):
             phase="copying",
         )
     else:
-        video_files = copy_recent_recordings(camera["id"], sample_dir, args.samples, args.lookback_hours, args.progress_file)
+        video_files = copy_recent_recordings(
+            camera["id"],
+            sample_dir,
+            args.samples,
+            args.lookback_hours,
+            args.progress_file,
+            randomize=args.optimized,
+        )
 
-    frame_paths = extract_gray_frames(video_files, frame_dir, args.frames_per_video, args.frame_width, args.frame_height, args.progress_file)
     keep_zones = parse_zones(args.keep_zone)
     exclude_zones = parse_zones(args.exclude_zone)
-    proposed_map, stats = build_map(
-        frame_paths,
-        cols,
-        rows,
-        args.frame_width,
-        args.frame_height,
-        args.sensitivity,
-        args.noise_suppression,
-        keep_zones,
-        exclude_zones,
-    )
+    optimized = {"enabled": False}
+    if args.optimized:
+        proposed_map, stats, frame_paths, video_files, optimized = optimized_build_map(
+            video_files,
+            frame_dir,
+            args,
+            cols,
+            rows,
+            keep_zones,
+            exclude_zones,
+        )
+    else:
+        frame_paths = extract_gray_frames(video_files, frame_dir, args.frames_per_video, args.frame_width, args.frame_height, args.progress_file)
+        proposed_map, stats = build_map(
+            frame_paths,
+            cols,
+            rows,
+            args.frame_width,
+            args.frame_height,
+            args.sensitivity,
+            args.noise_suppression,
+            keep_zones,
+            exclude_zones,
+        )
 
     stamp = dt.datetime.now().astimezone().strftime("%Y%m%d-%H%M%S-%Z")
     preview_svg = output_dir / "camera-{}-preview-{}.svg".format(camera["id"], stamp)
@@ -699,6 +838,7 @@ def cmd_analyze(args):
         "current_motion_map": camera["motion_map"],
         "proposed_motion_map": proposed_map,
         "stats": {k: v for k, v in stats.items() if k not in ("scores", "active_counts")},
+        "optimized": optimized,
         "keep_zones": keep_zones,
         "exclude_zones": exclude_zones,
         "applied": bool(args.apply),
@@ -754,6 +894,10 @@ def build_parser():
     analyze.add_argument("--apply", action="store_true", help="Save proposed map to Devices.motion_map")
     analyze.add_argument("--stdout-json", action="store_true", help=argparse.SUPPRESS)
     analyze.add_argument("--progress-file", help=argparse.SUPPRESS)
+    analyze.add_argument("--optimized", action="store_true", help=argparse.SUPPRESS)
+    analyze.add_argument("--optimized-batch-size", type=int, default=24, help=argparse.SUPPRESS)
+    analyze.add_argument("--optimized-min-samples", type=int, default=48, help=argparse.SUPPRESS)
+    analyze.add_argument("--optimized-stability-percent", type=float, default=1.0, help=argparse.SUPPRESS)
     analyze.set_defaults(func=cmd_analyze)
 
     return parser

@@ -68,13 +68,14 @@ Then open Bluecherry:
 
 1. Go to the camera motion-map settings page.
 2. Set **Sensitivity** and **Noise Filter**.
-3. Choose **Quick Scan** or **Deep Scan**.
-4. For **Deep Scan**, choose `24-168` hours and optionally adjust **Samples/Hour**. It defaults to `4` and is only shown for Deep Scan.
-5. Click **Recommend Motion Sensitivity**.
-6. Review and edit the grid.
-7. Click Bluecherry's normal **Save Changes** button.
+3. Choose **Optimized Scan**, **Quick Scan**, or **Deep Scan**. Optimized Scan is the default.
+4. For **Optimized Scan**, choose `24-168` hours. It automatically samples in batches and stops when the recommendation stabilizes.
+5. For **Deep Scan**, choose `24-168` hours and optionally adjust **Samples/Hour**. It defaults to `4` and is only shown for Deep Scan.
+6. Click **Recommend Motion Sensitivity**.
+7. Review and edit the grid.
+8. Click Bluecherry's normal **Save Changes** button.
 
-Quick Scan uses the newest recordings and is intended for a fast first pass. Deep Scan spreads up to four samples per selected hour across the selected lookback window and usually gives a better recommendation when the camera has enough representative recordings.
+Quick Scan uses the newest recordings and is intended for a fast first pass. Optimized Scan samples randomly across the selected lookback window in batches until the recommended map stabilizes or it reaches the sample cap. Deep Scan spreads up to four samples per selected hour across the selected lookback window and usually gives a better recommendation when the camera has enough representative recordings.
 
 Recommendation scans run as background jobs on the Bluecherry server. The web page polls for status and stores the active job id in the browser for that camera, so a long Deep Scan can continue even if the browser briefly disconnects. If the computer sleeps, reopen the same motion-map page and the page will try to reconnect to the last scan for that camera.
 

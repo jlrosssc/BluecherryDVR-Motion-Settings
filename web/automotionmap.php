@@ -26,15 +26,15 @@ class automotionmap extends Controller {
             $this->json(false, 'Invalid auto-detect request');
         }
 
-        if ($mode !== 'deep') {
+        if ($mode !== 'deep' && $mode !== 'optimized') {
             $mode = 'quick';
         }
         $deep_hours = max(24, min(168, $deep_hours));
         $samples_per_hour = max(1, min(8, $samples_per_hour));
         if ($samples < 1) {
-            $samples = ($mode === 'deep') ? ($deep_hours * $samples_per_hour) : 2;
+            $samples = ($mode === 'deep' || $mode === 'optimized') ? ($deep_hours * $samples_per_hour) : 2;
         }
-        $samples = max(1, min(($mode === 'deep') ? 672 : 12, $samples));
+        $samples = max(1, min(($mode === 'deep' || $mode === 'optimized') ? 672 : 12, $samples));
         $frames = max(2, min(12, $frames));
 
         $cmd = $this->buildCommand($id, $sensitivity, $noise, $mode, $deep_hours, $samples, $frames);
@@ -93,8 +93,11 @@ class automotionmap extends Controller {
             . '--frames-per-video ' . escapeshellarg((string)$frames) . ' '
             . '--work-dir ' . escapeshellarg('/var/lib/bluecherry/motion-optimizer') . ' '
             . '--stdout-json';
-        if ($mode === 'deep') {
+        if ($mode === 'deep' || $mode === 'optimized') {
             $cmd .= ' --lookback-hours ' . escapeshellarg((string)$deep_hours);
+        }
+        if ($mode === 'optimized') {
+            $cmd .= ' --optimized --optimized-batch-size 24 --optimized-min-samples 48 --optimized-stability-percent 1.0';
         }
         return $cmd;
     }
