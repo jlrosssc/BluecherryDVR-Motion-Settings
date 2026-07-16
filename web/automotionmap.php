@@ -35,7 +35,7 @@ class automotionmap extends Controller {
         $cmd = $this->buildCommand($id, $sensitivity, $noise, $mode, $deep_hours, $samples, $frames);
 
         if ($action === 'start') {
-            $this->start($cmd, array(
+            $this->startJob($cmd, array(
                 'camera_id' => $id,
                 'sensitivity' => $sensitivity,
                 'noise_suppression' => $noise,
@@ -114,7 +114,7 @@ class automotionmap extends Controller {
         return $dir;
     }
 
-    private function start($cmd, $meta)
+    private function startJob($cmd, $meta)
     {
         $dir = $this->jobsDir();
         $job_id = date('YmdHis') . '-' . bin2hex(random_bytes(4));
