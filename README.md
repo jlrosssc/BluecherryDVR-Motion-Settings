@@ -23,7 +23,7 @@ If the available recordings only include quiet periods, the tool may recommend t
 ## Standalone Install
 
 ```bash
-git clone https://github.com/jlross/BluecherryDVR-Motion-Settings.git
+git clone https://github.com/jlrosssc/BluecherryDVR-Motion-Settings.git
 cd BluecherryDVR-Motion-Settings
 sudo sh scripts/install-standalone.sh
 ```
@@ -59,7 +59,7 @@ The tool creates a rollback JSON file before applying any database change.
 Run this on the Bluecherry server:
 
 ```bash
-git clone https://github.com/jlross/BluecherryDVR-Motion-Settings.git
+git clone https://github.com/jlrosssc/BluecherryDVR-Motion-Settings.git
 cd BluecherryDVR-Motion-Settings
 sudo python3 scripts/install-web-ui.py
 ```

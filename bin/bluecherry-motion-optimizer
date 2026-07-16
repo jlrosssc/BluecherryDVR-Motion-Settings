@@ -194,7 +194,10 @@ def select_recordings(paths, sample_count, lookback_hours=None):
     for path in paths:
         timestamp = recording_timestamp(path)
         if timestamp is None:
-            timestamp = dt.datetime.fromtimestamp(path.stat().st_mtime)
+            try:
+                timestamp = dt.datetime.fromtimestamp(path.stat().st_mtime)
+            except FileNotFoundError:
+                continue
         stamped.append((timestamp, path))
     stamped.sort(key=lambda item: item[0])
 
@@ -232,13 +235,20 @@ def copy_recent_recordings(camera_id, sample_dir, sample_count, lookback_hours=N
 
     if direct_files:
         selected_files = select_recordings(direct_files, sample_count, lookback_hours)
+        copied = []
         for index, source in enumerate(selected_files, 1):
             target = sample_dir / "sample_{}{}".format(index, source.suffix.lower())
-            shutil.copy2(str(source), str(target))
+            try:
+                shutil.copy2(str(source), str(target))
+            except (FileNotFoundError, OSError):
+                continue
             try:
                 os.chmod(str(target), 0o644)
             except OSError:
                 pass
+            copied.append(target)
+        if not copied:
+            raise RuntimeError("Selected recordings disappeared before analysis could copy them")
         return sorted(path for path in sample_dir.iterdir() if path.is_file())
 
     if shutil.which("docker") is None:
@@ -285,6 +295,8 @@ def extract_gray_frames(video_files, frame_dir, frames_per_video, width, height)
     frame_dir.mkdir(parents=True, exist_ok=True)
     extracted = []
     for index, video in enumerate(video_files, 1):
+        if not video.exists():
+            continue
         raw_output = frame_dir / "video{:02d}.gray".format(index)
         cmd = [
             FFMPEG,
