@@ -12,6 +12,12 @@ For a new camera or recently moved camera, wait at least 24 hours before using t
 
 If the available recordings only include quiet periods, the tool may recommend too many inactive cells. If they only include storms, wind, or unusual activity, it may recommend settings that are too sensitive or too suppressed.
 
+## Recommended Analysis Baseline
+
+For a new install or a camera that has not been tuned yet, start the optimizer with **Sensitivity** set high, usually `8`, and **Noise Filter** around `5`. This gives the analyzer a broad view of motion in the recordings without immediately treating tiny compression noise or lighting flicker as important activity.
+
+The web UI does not overwrite the saved Bluecherry motion map during analysis. It loads a proposed map into the grid for review. Edit the proposed grid if needed, then click Bluecherry's normal **Save Changes** button only when you are satisfied with the result.
+
 ## Requirements
 
 - Bluecherry DVR with MySQL configuration at `/etc/bluecherry.conf`
@@ -37,19 +43,19 @@ bluecherry-motion-optimizer list-cameras
 Run a dry-run analysis:
 
 ```bash
-bluecherry-motion-optimizer analyze --camera 1 --sensitivity 5 --noise-suppression 5
+bluecherry-motion-optimizer analyze --camera 1 --sensitivity 8 --noise-suppression 5
 ```
 
 Run a deep scan over a time window:
 
 ```bash
-bluecherry-motion-optimizer analyze --camera 1 --sensitivity 5 --noise-suppression 5 --lookback-hours 72 --samples 288 --frames-per-video 3
+bluecherry-motion-optimizer analyze --camera 1 --sensitivity 8 --noise-suppression 5 --lookback-hours 72 --samples 288 --frames-per-video 3
 ```
 
 Apply the proposed map to the Bluecherry database:
 
 ```bash
-bluecherry-motion-optimizer analyze --camera 1 --sensitivity 5 --noise-suppression 5 --apply
+bluecherry-motion-optimizer analyze --camera 1 --sensitivity 8 --noise-suppression 5 --apply
 ```
 
 The tool creates a rollback JSON file before applying any database change.
@@ -67,7 +73,7 @@ sudo python3 scripts/install-web-ui.py
 Then open Bluecherry:
 
 1. Go to the camera motion-map settings page.
-2. Set **Sensitivity** and **Noise Filter**.
+2. Set **Sensitivity** to `8` as a recommended starting point and **Noise Filter** to `5`.
 3. Choose **Optimized Scan**, **Quick Scan**, or **Deep Scan**. Optimized Scan is the default.
 4. For **Optimized Scan**, choose `24-168` hours. It automatically samples in batches and stops when the recommendation stabilizes.
 5. For **Deep Scan**, choose `24-168` hours and optionally adjust **Samples/Hour**. It defaults to `4` and is only shown for Deep Scan.
@@ -85,6 +91,7 @@ Recommendation scans run as background jobs on the Bluecherry server. The web pa
 
 - Lower values produce fewer active cells.
 - Higher values preserve more motion-sensitive cells.
+- For first-time tuning, start at `8` so the analyzer is less likely to miss meaningful motion.
 
 `--noise-suppression` accepts `0-10`.
 
