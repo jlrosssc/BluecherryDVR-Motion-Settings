@@ -1,8 +1,8 @@
 # BluecherryDVR Motion Settings
 
-BluecherryDVR Motion Settings analyzes recent Bluecherry recordings and generates a proposed `Devices.motion_map` for a camera. It can be used as a command-line dry-run tool or installed into the Bluecherry motion-map page as a **Recommend Motion Sensitivity** button.
+BluecherryDVR Motion Settings analyzes recent Bluecherry recordings and generates proposed `Devices.motion_map` settings. It can be used as a command-line dry-run tool, installed into the Bluecherry motion-map page as a **Recommend Motion Sensitivity** button, or run from the Devices page as **Auto Detect Motion Settings All Cameras**.
 
-The web UI integration does not save automatically. It loads the proposed map into Bluecherry's existing grid so you can review and edit it, then use Bluecherry's normal **Save Changes** button.
+The single-camera web UI does not save automatically. It loads the proposed map into Bluecherry's existing grid so you can review and edit it, then use Bluecherry's normal **Save Changes** button. The all-camera Devices page action runs in the background and automatically saves optimized maps for every camera, creating rollback JSON files first.
 
 ## Important Timing Note
 
@@ -58,6 +58,12 @@ Apply the proposed map to the Bluecherry database:
 bluecherry-motion-optimizer analyze --camera 1 --sensitivity 8 --noise-suppression 5 --apply
 ```
 
+Run optimized analysis for all cameras and automatically save each proposed map:
+
+```bash
+bluecherry-motion-optimizer optimize-all --sensitivity 8 --noise-suppression 5
+```
+
 The tool creates a rollback JSON file before applying any database change.
 
 ## Web UI Install
@@ -84,6 +90,8 @@ Then open Bluecherry:
 Quick Scan uses the newest recordings and is intended for a fast first pass. Optimized Scan samples randomly across the selected lookback window in batches until the recommended map stabilizes or it reaches the sample cap. Deep Scan spreads up to four samples per selected hour across the selected lookback window and usually gives a better recommendation when the camera has enough representative recordings.
 
 Recommendation scans run as background jobs on the Bluecherry server. The web page polls for status and stores the active job id in the browser for that camera, so a long Deep Scan can continue even if the browser briefly disconnects. If the computer sleeps, reopen the same motion-map page and the page will try to reconnect to the last scan for that camera.
+
+On the Devices page, click **Auto Detect Motion Settings All Cameras** to run Optimized Scan for every camera in the background. This action saves each recommended map automatically, reports saved and failed camera counts, and writes rollback files under the optimizer work directory before changing the database.
 
 ## Tuning
 

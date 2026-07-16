@@ -1,0 +1,90 @@
+<?php
+addJs(<<<'JS'
+$(function() {
+    /* Auto Detect Motion Settings All Cameras: start */
+    function allMotionStorageKey() {
+        return "bluecherryAllCameraMotionJob";
+    }
+
+    function allMotionStatusText(progress) {
+        if (!progress) return "All-camera optimized scan is running...";
+        var text = progress.message || "All-camera optimized scan is running...";
+        if (progress.current !== undefined && progress.total !== undefined) {
+            text += " (" + progress.current + " of " + progress.total + ")";
+        }
+        if (progress.updated_at) {
+            text += " Updated " + progress.updated_at + ".";
+        }
+        return text;
+    }
+
+    function allMotionPoll(jobId) {
+        var status = $("#auto-motion-all-status");
+        $.ajax({
+            type: "POST",
+            url: "/ajax/automotionmap.php",
+            dataType: "json",
+            data: {action: "status", job_id: jobId}
+        }).done(function(msg) {
+            if (parseInt(msg.status, 10) === 6 && msg.data && msg.data.state === "complete") {
+                localStorage.removeItem(allMotionStorageKey());
+                var summary = msg.data.summary || {};
+                status.removeClass("text-muted text-danger").addClass("text-success")
+                    .text("All-camera optimized scan complete. Saved " + (summary.saved_count || 0) + ", failed " + (summary.failed_count || 0) + ".");
+                if ($.notify) $.notify({icon: "fa fa-check fa-fw", message: msg.msg}, {type: "success", delay: 8000});
+            } else if (parseInt(msg.status, 10) === 6 && msg.data && msg.data.state === "running") {
+                status.removeClass("text-danger text-success").addClass("text-muted").text(allMotionStatusText(msg.data.progress));
+                setTimeout(function() { allMotionPoll(jobId); }, 5000);
+            } else {
+                localStorage.removeItem(allMotionStorageKey());
+                status.removeClass("text-muted text-success").addClass("text-danger").text((msg && msg.msg) ? msg.msg : "All-camera optimized scan failed.");
+                if ($.notify) $.notify({icon: "fa fa-times-circle fa-fw", message: (msg && msg.msg) ? msg.msg : "All-camera optimized scan failed."}, {type: "danger", delay: 8000});
+            }
+        }).fail(function() {
+            status.removeClass("text-success").addClass("text-muted").text("Waiting to reconnect to all-camera optimized scan...");
+            setTimeout(function() { allMotionPoll(jobId); }, 10000);
+        });
+    }
+
+    $("#auto-motion-all-cameras").off("click.autoMotionAll").on("click.autoMotionAll", function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var button = $(this);
+        var status = $("#auto-motion-all-status");
+        if (!confirm("This will run Optimized Scan for all cameras and automatically save recommended motion maps. Rollback files will be created before each save. Continue?")) {
+            return false;
+        }
+        button.button("loading");
+        status.removeClass("text-danger text-success").addClass("text-muted").text("Starting all-camera optimized scan...");
+        $.ajax({
+            type: "POST",
+            url: "/ajax/automotionmap.php",
+            dataType: "json",
+            data: {action: "startall"}
+        }).done(function(msg) {
+            if (parseInt(msg.status, 10) === 6 && msg.data && msg.data.job_id) {
+                localStorage.setItem(allMotionStorageKey(), msg.data.job_id);
+                status.removeClass("text-danger text-success").addClass("text-muted").text("All-camera optimized scan started...");
+                allMotionPoll(msg.data.job_id);
+            } else {
+                status.removeClass("text-muted text-success").addClass("text-danger").text((msg && msg.msg) ? msg.msg : "Could not start all-camera optimized scan.");
+            }
+        }).fail(function(xhr) {
+            var message = "Could not start all-camera optimized scan.";
+            if (xhr && xhr.responseText) message += " " + xhr.responseText.substring(0, 180);
+            status.removeClass("text-muted text-success").addClass("text-danger").text(message);
+        }).always(function() {
+            button.button("reset");
+        });
+    });
+
+    var previousJob = localStorage.getItem(allMotionStorageKey());
+    if (previousJob) {
+        $("#auto-motion-all-status").removeClass("text-danger text-success").addClass("text-muted").text("Checking previous all-camera optimized scan...");
+        allMotionPoll(previousJob);
+    }
+    /* Auto Detect Motion Settings All Cameras: end */
+});
+JS
+);
+?>

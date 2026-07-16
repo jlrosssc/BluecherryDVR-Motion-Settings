@@ -22,13 +22,14 @@ def install(args):
     stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
 
     template = Path(args.bluecherry_www) / "template/ajax/motionmap.php"
+    devices_template = Path(args.bluecherry_www) / "template/ajax/devices.php"
     devices_js = Path(args.bluecherry_www) / "template/dist/js/devices.js"
     ajax_php = Path(args.bluecherry_www) / "ajax/automotionmap.php"
     optimizer_web = Path(args.sbin_dir) / "bluecherry-motion-optimizer-web"
     helper = Path(args.sbin_dir) / "bluecherry-auto-motion-helper"
     work_dir = Path(args.work_dir)
 
-    for path in (template, devices_js):
+    for path in (template, devices_template, devices_js):
         if not path.exists():
             raise SystemExit("Missing Bluecherry file: {}".format(path))
         backup = path.with_name(path.name + ".bak-auto-motion-" + stamp)
@@ -181,6 +182,30 @@ def install(args):
         if pos == -1:
             raise SystemExit("Could not find PHP close tag")
         template.write_text(tpl[:pos] + "\n" + background + "\n" + tpl[pos:])
+
+    devices_tpl = devices_template.read_text()
+    if 'id="auto-motion-all-cameras"' not in devices_tpl:
+        addip = '<a href="/addip" class="btn btn-success ajax-content" role="button"><i class="fa fa-plus fa-fw"></i> <?php echo AIP_HEADER; ?></a>'
+        all_button = '<button type="button" class="btn btn-warning" id="auto-motion-all-cameras" data-loading-text="Running..."><i class="fa fa-magic fa-fw"></i> Auto Detect Motion Settings All Cameras</button>\n            ' + addip
+        devices_tpl = devices_tpl.replace(addip, all_button, 1)
+        status_needle = '        <div class="clearfix"></div>'
+        status_block = '        <div class="clearfix"></div>\n        <div id="auto-motion-all-status" class="text-muted small" style="margin-top:8px;"></div>'
+        devices_tpl = devices_tpl.replace(status_needle, status_block, 1)
+
+    all_marker = "/* Auto Detect Motion Settings All Cameras: start */"
+    all_end_marker = "/* Auto Detect Motion Settings All Cameras: end */"
+    all_background = (repo / "web/devices_all_cameras_ui.phpfrag").read_text()
+    if all_marker in devices_tpl and all_end_marker in devices_tpl:
+        start = devices_tpl.find("\naddJs(<<<'JS'\n$(function() {\n    " + all_marker)
+        end = devices_tpl.find(all_end_marker, start)
+        if start != -1 and end != -1:
+            close = "\nJS\n);\n"
+            end = devices_tpl.find(close, end)
+            if end != -1:
+                devices_tpl = devices_tpl[:start] + "\n" + all_background + "\n" + devices_tpl[end + len(close):]
+    else:
+        devices_tpl = devices_tpl.rstrip() + "\n" + all_background + "\n"
+    devices_template.write_text(devices_tpl)
 
     print("Installed Bluecherry auto motion UI.")
     print("Backups stamped: {}".format(stamp))

@@ -12,6 +12,9 @@ class automotionmap extends Controller {
         if ($action === 'status') {
             $this->status();
         }
+        if ($action === 'startall') {
+            $this->startAll();
+        }
 
         $id = isset($_POST['id']) ? intval($_POST['id']) : 0;
         $sensitivity = isset($_POST['sensitivity']) ? intval($_POST['sensitivity']) : 5;
@@ -102,6 +105,32 @@ class automotionmap extends Controller {
         return $cmd;
     }
 
+    private function buildAllCommand()
+    {
+        $python = is_executable('/usr/bin/python3') ? '/usr/bin/python3' : 'python3';
+        return $python . ' /usr/local/sbin/bluecherry-motion-optimizer-web optimize-all '
+            . '--sensitivity 8 '
+            . '--noise-suppression 5 '
+            . '--lookback-hours 168 '
+            . '--samples 672 '
+            . '--frames-per-video 3 '
+            . '--work-dir ' . escapeshellarg('/var/lib/bluecherry/motion-optimizer') . ' '
+            . '--stdout-json';
+    }
+
+    private function startAll()
+    {
+        $this->startJob($this->buildAllCommand(), array(
+            'job_type' => 'all_cameras',
+            'scan_mode' => 'optimized',
+            'deep_hours' => 168,
+            'samples' => 672,
+            'frames_per_video' => 3,
+            'sensitivity' => 8,
+            'noise_suppression' => 5
+        ));
+    }
+
     private function jobsDir()
     {
         $dir = '/var/lib/bluecherry/motion-optimizer/jobs';
@@ -152,6 +181,8 @@ class automotionmap extends Controller {
 
         $base = $this->jobsDir() . '/' . $job_id;
         $progress = $this->readProgress($base);
+        $meta = $this->readJsonFile($base . '.meta.json');
+        $job_type = isset($meta['request']['job_type']) ? $meta['request']['job_type'] : 'single_camera';
         $exit_file = $base . '.exit';
         if (!file_exists($exit_file)) {
             $this->json(true, 'Recommendation scan is still running.', array(
@@ -173,6 +204,22 @@ class automotionmap extends Controller {
 
         $raw = file_exists($base . '.result.json') ? trim(file_get_contents($base . '.result.json')) : '';
         $payload = json_decode($raw, true);
+        if ($job_type === 'all_cameras') {
+            if (!is_array($payload) || !isset($payload['results'])) {
+                $this->json(false, 'All-camera recommendation returned invalid data', array(
+                    'job_id' => $job_id,
+                    'state' => 'failed',
+                    'progress' => $progress
+                ));
+            }
+            $this->json(true, 'All-camera optimized motion settings complete.', array(
+                'job_id' => $job_id,
+                'state' => 'complete',
+                'job_type' => 'all_cameras',
+                'summary' => $payload,
+                'progress' => $progress
+            ));
+        }
         if (!is_array($payload) || empty($payload['proposed_motion_map'])) {
             $this->json(false, 'Recommendation scan returned invalid data', array(
                 'job_id' => $job_id,
@@ -205,13 +252,17 @@ class automotionmap extends Controller {
 
     private function readProgress($base)
     {
-        $file = $base . '.progress.json';
+        return $this->readJsonFile($base . '.progress.json');
+    }
+
+    private function readJsonFile($file)
+    {
         if (!file_exists($file)) {
             return array();
         }
         $raw = trim(file_get_contents($file));
-        $progress = json_decode($raw, true);
-        return is_array($progress) ? $progress : array();
+        $payload = json_decode($raw, true);
+        return is_array($payload) ? $payload : array();
     }
 
     private function json($ok, $message, $data = array())

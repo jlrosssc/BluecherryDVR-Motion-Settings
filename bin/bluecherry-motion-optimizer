@@ -774,9 +774,7 @@ def cmd_list(args):
         print("\t".join(row))
 
 
-def cmd_analyze(args):
-    cfg = read_bluecherry_config(args.config)
-    camera = get_camera(cfg, args.camera)
+def analyze_camera(cfg, camera, args, final_progress=True):
     cols, rows = grid_size(camera)
     expected = cols * rows
     if len(camera["motion_map"]) != expected:
@@ -791,7 +789,7 @@ def cmd_analyze(args):
     if frame_dir.exists():
         shutil.rmtree(str(frame_dir))
 
-    if args.sample_dir:
+    if getattr(args, "sample_dir", None):
         video_files = sorted(Path(args.sample_dir).expanduser().glob("*"))
         write_progress(
             args.progress_file,
@@ -876,22 +874,121 @@ def cmd_analyze(args):
     report_json.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
     write_report(report_txt, payload)
 
+    if final_progress:
+        write_progress(
+            args.progress_file,
+            "complete",
+            "Recommendation complete.",
+            total=len(video_files),
+            current=len(video_files),
+            phase="complete",
+            frame_count=len(frame_paths),
+        )
+    return payload
+
+
+def cmd_analyze(args):
+    cfg = read_bluecherry_config(args.config)
+    camera = get_camera(cfg, args.camera)
+    payload = analyze_camera(cfg, camera, args)
+
     if args.stdout_json:
         print(json.dumps(payload, sort_keys=True))
     else:
-        print(report_txt)
-        print(preview_svg)
+        print(payload["json_report"].replace(".json", ".txt"))
+        print(payload["preview_svg"])
         print("Applied: {}".format("yes" if args.apply else "no"))
         print("Proposed counts: {}".format(payload["proposed_counts"]))
+
+
+def cmd_optimize_all(args):
+    cfg = read_bluecherry_config(args.config)
+    rows = list_cameras(cfg)
+    cameras = [get_camera(cfg, int(row[0])) for row in rows]
+    results = []
+    total = len(cameras)
+    for index, camera in enumerate(cameras, 1):
+        write_progress(
+            args.progress_file,
+            "all_cameras",
+            "Optimizing camera {} of {}: {}".format(index, total, camera["name"]),
+            current=index,
+            total=total,
+            phase="all_cameras",
+            camera_id=camera["id"],
+            camera_name=camera["name"],
+        )
+        try:
+            payload = analyze_camera(cfg, camera, args, final_progress=False)
+            results.append({
+                "camera_id": camera["id"],
+                "camera_name": camera["name"],
+                "state": "saved" if payload.get("applied") else "complete",
+                "backup_file": payload.get("backup_file"),
+                "report": payload.get("json_report"),
+                "optimized": payload.get("optimized"),
+            })
+            write_progress(
+                args.progress_file,
+                "all_cameras",
+                "Saved optimized settings for camera {} of {}: {}".format(index, total, camera["name"]),
+                current=index,
+                total=total,
+                phase="all_cameras",
+                camera_id=camera["id"],
+                camera_name=camera["name"],
+                camera_state="saved",
+            )
+        except Exception as exc:
+            results.append({
+                "camera_id": camera["id"],
+                "camera_name": camera["name"],
+                "state": "failed",
+                "error": str(exc),
+            })
+            write_progress(
+                args.progress_file,
+                "all_cameras",
+                "Skipped camera {} of {}: {} ({})".format(index, total, camera["name"], exc),
+                current=index,
+                total=total,
+                phase="all_cameras",
+                camera_id=camera["id"],
+                camera_name=camera["name"],
+                camera_state="failed",
+            )
+
+    saved = sum(1 for item in results if item["state"] == "saved")
+    failed = sum(1 for item in results if item["state"] == "failed")
+    payload = {
+        "generated_at": friendly_now(),
+        "camera_count": total,
+        "saved_count": saved,
+        "failed_count": failed,
+        "results": results,
+    }
+    work_dir = Path(args.work_dir).expanduser()
+    output_dir = work_dir / "all-cameras"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    stamp = dt.datetime.now().astimezone().strftime("%Y%m%d-%H%M%S-%Z")
+    report_json = output_dir / "all-cameras-optimized-{}.json".format(stamp)
+    report_json.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+    payload["json_report"] = str(report_json)
     write_progress(
         args.progress_file,
         "complete",
-        "Recommendation complete.",
-        total=len(video_files),
-        current=len(video_files),
+        "All-camera optimization complete. Saved {}, failed {}.".format(saved, failed),
+        current=total,
+        total=total,
         phase="complete",
-        frame_count=len(frame_paths),
+        saved_count=saved,
+        failed_count=failed,
     )
+    if args.stdout_json:
+        print(json.dumps(payload, sort_keys=True))
+    else:
+        print(report_json)
+        print("Saved: {} Failed: {}".format(saved, failed))
 
 
 def build_parser():
@@ -924,6 +1021,26 @@ def build_parser():
     analyze.add_argument("--optimized-min-samples", type=int, default=48, help=argparse.SUPPRESS)
     analyze.add_argument("--optimized-stability-percent", type=float, default=1.0, help=argparse.SUPPRESS)
     analyze.set_defaults(func=cmd_analyze)
+
+    all_p = sub.add_parser("optimize-all", help="Run optimized analysis and save maps for all cameras")
+    all_p.add_argument("--work-dir", default=DEFAULT_WORK_DIR)
+    all_p.add_argument("--samples", type=int, default=672)
+    all_p.add_argument("--lookback-hours", type=int, default=168)
+    all_p.add_argument("--frames-per-video", type=int, default=3)
+    all_p.add_argument("--frame-width", type=int, default=320)
+    all_p.add_argument("--frame-height", type=int, default=240)
+    all_p.add_argument("--sensitivity", type=int, default=8, choices=range(1, 11), metavar="1-10")
+    all_p.add_argument("--noise-suppression", type=int, default=5, choices=range(0, 11), metavar="0-10")
+    all_p.add_argument("--keep-zone", action="append", help=argparse.SUPPRESS)
+    all_p.add_argument("--exclude-zone", action="append", help=argparse.SUPPRESS)
+    all_p.add_argument("--apply", action="store_true", default=True, help=argparse.SUPPRESS)
+    all_p.add_argument("--stdout-json", action="store_true", help=argparse.SUPPRESS)
+    all_p.add_argument("--progress-file", help=argparse.SUPPRESS)
+    all_p.add_argument("--optimized", action="store_true", default=True, help=argparse.SUPPRESS)
+    all_p.add_argument("--optimized-batch-size", type=int, default=24, help=argparse.SUPPRESS)
+    all_p.add_argument("--optimized-min-samples", type=int, default=48, help=argparse.SUPPRESS)
+    all_p.add_argument("--optimized-stability-percent", type=float, default=1.0, help=argparse.SUPPRESS)
+    all_p.set_defaults(func=cmd_optimize_all)
 
     return parser
 
