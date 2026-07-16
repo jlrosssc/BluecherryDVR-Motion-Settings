@@ -1,0 +1,84 @@
+# BluecherryDVR Motion Settings
+
+BluecherryDVR Motion Settings analyzes recent Bluecherry recordings and generates a proposed `Devices.motion_map` for a camera. It can be used as a command-line dry-run tool or installed into the Bluecherry motion-map page as a **Recommend Motion Sensitivity** button.
+
+The web UI integration does not save automatically. It loads the proposed map into Bluecherry's existing grid so you can review and edit it, then use Bluecherry's normal **Save Changes** button.
+
+## Requirements
+
+- Bluecherry DVR with MySQL configuration at `/etc/bluecherry.conf`
+- Python 3
+- Docker access for reading `/var/lib/bluecherry/recordings` when the current user cannot read recordings directly
+- Bluecherry's bundled ffmpeg at `/usr/lib/bluecherry/ffmpeg`
+- `gcc` only for the optional web UI helper
+
+## Standalone Install
+
+```bash
+git clone https://github.com/jlross/BluecherryDVR-Motion-Settings.git
+cd BluecherryDVR-Motion-Settings
+sudo sh scripts/install-standalone.sh
+```
+
+List cameras:
+
+```bash
+bluecherry-motion-optimizer list-cameras
+```
+
+Run a dry-run analysis:
+
+```bash
+bluecherry-motion-optimizer analyze --camera 1 --sensitivity 5 --noise-suppression 5
+```
+
+Apply the proposed map to the Bluecherry database:
+
+```bash
+bluecherry-motion-optimizer analyze --camera 1 --sensitivity 5 --noise-suppression 5 --apply
+```
+
+The tool creates a rollback JSON file before applying any database change.
+
+## Web UI Install
+
+Run this on the Bluecherry server:
+
+```bash
+git clone https://github.com/jlross/BluecherryDVR-Motion-Settings.git
+cd BluecherryDVR-Motion-Settings
+sudo python3 scripts/install-web-ui.py
+```
+
+Then open Bluecherry:
+
+1. Go to the camera motion-map settings page.
+2. Set **Sensitivity** and **Noise Filter**.
+3. Click **Recommend Motion Sensitivity**.
+4. Review and edit the grid.
+5. Click Bluecherry's normal **Save Changes** button.
+
+## Tuning
+
+`--sensitivity` accepts `1-10`.
+
+- Lower values produce fewer active cells.
+- Higher values preserve more motion-sensitive cells.
+
+`--noise-suppression` accepts `0-10`.
+
+- Lower values allow more noisy motion areas.
+- Higher values reduce cells that appear constantly active, such as trees or leaves.
+
+Optional zones:
+
+```bash
+bluecherry-motion-optimizer analyze --camera 1 --keep-zone 10,8,18,15
+bluecherry-motion-optimizer analyze --camera 1 --exclude-zone 0,0,31,4
+```
+
+Zone coordinates are Bluecherry grid cells: `x1,y1,x2,y2`.
+
+## License
+
+GPL-2.0. See `LICENSE`.

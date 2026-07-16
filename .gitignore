@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+*.bak-auto-motion-*
+bluecherry-motion-optimizer/
