@@ -12,6 +12,9 @@ class automotionmap extends Controller {
         if ($action === 'status') {
             $this->status();
         }
+        if ($action === 'cancel') {
+            $this->cancel();
+        }
         if ($action === 'startall') {
             $this->startAll();
         }
@@ -158,13 +161,17 @@ class automotionmap extends Controller {
             $this->json(false, 'Could not write recommendation job metadata');
         }
 
-        $shell = 'sh -c ' . escapeshellarg(
-            $cmd . ' --progress-file ' . escapeshellarg($base . '.progress.json')
+        $inner = $cmd . ' --progress-file ' . escapeshellarg($base . '.progress.json')
             . ' > ' . escapeshellarg($base . '.result.json')
             . ' 2> ' . escapeshellarg($base . '.error.log')
-            . '; rc=$?; echo $rc > ' . escapeshellarg($base . '.exit')
-        ) . ' > /dev/null 2>&1 &';
-        exec($shell);
+            . ' & child=$!; echo $child > ' . escapeshellarg($base . '.pid')
+            . '; wait $child; rc=$?; echo $rc > ' . escapeshellarg($base . '.exit');
+        $shell = 'sh -c ' . escapeshellarg($inner) . ' > /dev/null 2>&1 & echo $!';
+        $output = array();
+        exec($shell, $output);
+        if (!empty($output[0]) && preg_match('/^[0-9]+$/', trim($output[0]))) {
+            file_put_contents($base . '.wrapper.pid', trim($output[0]) . "\n");
+        }
 
         $this->json(true, 'Recommendation scan started.', array(
             'job_id' => $job_id,
@@ -183,6 +190,14 @@ class automotionmap extends Controller {
         $progress = $this->readProgress($base);
         $meta = $this->readJsonFile($base . '.meta.json');
         $job_type = isset($meta['request']['job_type']) ? $meta['request']['job_type'] : 'single_camera';
+        if (file_exists($base . '.cancelled')) {
+            $this->json(true, 'Recommendation scan canceled.', array(
+                'job_id' => $job_id,
+                'state' => 'canceled',
+                'job_type' => $job_type,
+                'progress' => $progress
+            ));
+        }
         $exit_file = $base . '.exit';
         if (!file_exists($exit_file)) {
             $this->json(true, 'Recommendation scan is still running.', array(
@@ -248,6 +263,88 @@ class automotionmap extends Controller {
             'preview' => isset($payload['preview_svg']) ? $payload['preview_svg'] : '',
             'progress' => $progress
         ));
+    }
+
+    private function cancel()
+    {
+        $job_id = isset($_POST['job_id']) ? preg_replace('/[^A-Za-z0-9_-]/', '', $_POST['job_id']) : '';
+        if ($job_id === '') {
+            $this->json(false, 'Missing recommendation job id');
+        }
+
+        $base = $this->jobsDir() . '/' . $job_id;
+        if (!file_exists($base . '.meta.json')) {
+            $this->json(false, 'Recommendation job not found');
+        }
+
+        if (file_exists($base . '.exit')) {
+            file_put_contents($base . '.cancelled', date('c') . "\n");
+            $this->writeCancelProgress($base);
+            $this->json(true, 'Recommendation scan is no longer running.', array(
+                'job_id' => $job_id,
+                'state' => 'canceled',
+                'progress' => $this->readProgress($base)
+            ));
+        }
+
+        $killed = false;
+        $pids = array();
+        foreach (array($base . '.pid', $base . '.wrapper.pid') as $pid_file) {
+            if (!file_exists($pid_file)) {
+                continue;
+            }
+            $pid = intval(trim(file_get_contents($pid_file)));
+            if ($pid > 1) {
+                $pids[] = $pid;
+            }
+        }
+        $pids = array_unique(array_merge($pids, $this->findPidsForJob($job_id)));
+        rsort($pids);
+        foreach ($pids as $pid) {
+            exec('kill -TERM ' . escapeshellarg((string)$pid) . ' 2>/dev/null', $output, $rc);
+            $killed = $killed || ($rc === 0);
+        }
+
+        file_put_contents($base . '.cancelled', date('c') . "\n");
+        $this->writeCancelProgress($base);
+        if (!file_exists($base . '.exit')) {
+            file_put_contents($base . '.exit', "130\n");
+        }
+
+        $this->json(true, $killed ? 'Recommendation scan canceled.' : 'Recommendation scan marked canceled.', array(
+            'job_id' => $job_id,
+            'state' => 'canceled',
+            'progress' => $this->readProgress($base)
+        ));
+    }
+
+    private function findPidsForJob($job_id)
+    {
+        $pids = array();
+        exec('ps -ef 2>/dev/null', $lines);
+        foreach ($lines as $line) {
+            if (strpos($line, $job_id) === false || strpos($line, 'bluecherry-motion-optimizer-web') === false) {
+                continue;
+            }
+            $parts = preg_split('/\s+/', trim($line));
+            if (isset($parts[1]) && preg_match('/^[0-9]+$/', $parts[1])) {
+                $pid = intval($parts[1]);
+                if ($pid > 1) {
+                    $pids[] = $pid;
+                }
+            }
+        }
+        return array_unique($pids);
+    }
+
+    private function writeCancelProgress($base)
+    {
+        $progress = $this->readProgress($base);
+        $progress['state'] = 'canceled';
+        $progress['phase'] = 'canceled';
+        $progress['message'] = 'Recommendation scan canceled by user.';
+        $progress['updated_at'] = date('M j, Y g:i:s A T');
+        file_put_contents($base . '.progress.json', json_encode($progress) . "\n");
     }
 
     private function readProgress($base)

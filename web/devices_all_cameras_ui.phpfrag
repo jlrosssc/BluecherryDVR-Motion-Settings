@@ -6,6 +6,19 @@ $(function() {
         return "bluecherryAllCameraMotionJob";
     }
 
+    function allMotionStopButton() {
+        var button = $("#auto-motion-all-stop");
+        if (!button.length) {
+            button = $('<button type="button" class="btn btn-default" id="auto-motion-all-stop" style="margin-left:6px; display:none;"><i class="fa fa-stop fa-fw"></i> Stop</button>');
+            $("#auto-motion-all-cameras").after(button);
+        }
+        return button;
+    }
+
+    function allMotionSetRunning(running) {
+        allMotionStopButton().toggle(!!running);
+    }
+
     function allMotionStatusText(progress) {
         if (!progress) return "All-camera optimized scan is running...";
         var parts = [];
@@ -36,8 +49,32 @@ $(function() {
         return text;
     }
 
+    function allMotionCancel(jobId) {
+        var status = $("#auto-motion-all-status");
+        status.removeClass("text-danger text-success").addClass("text-muted").text("Stopping all-camera optimized scan...");
+        $.ajax({
+            type: "POST",
+            url: "/ajax/automotionmap.php",
+            dataType: "json",
+            data: {action: "cancel", job_id: jobId}
+        }).done(function(msg) {
+            localStorage.removeItem(allMotionStorageKey());
+            allMotionSetRunning(false);
+            if (parseInt(msg.status, 10) === 6) {
+                status.removeClass("text-muted text-danger").addClass("text-success").text((msg && msg.msg) ? msg.msg : "All-camera optimized scan canceled.");
+            } else {
+                status.removeClass("text-muted text-success").addClass("text-danger").text((msg && msg.msg) ? msg.msg : "Could not stop all-camera optimized scan.");
+            }
+        }).fail(function(xhr) {
+            var message = "Could not stop all-camera optimized scan.";
+            if (xhr && xhr.responseText) message += " " + xhr.responseText.substring(0, 180);
+            status.removeClass("text-muted text-success").addClass("text-danger").text(message);
+        });
+    }
+
     function allMotionPoll(jobId) {
         var status = $("#auto-motion-all-status");
+        allMotionSetRunning(true);
         $.ajax({
             type: "POST",
             url: "/ajax/automotionmap.php",
@@ -46,6 +83,7 @@ $(function() {
         }).done(function(msg) {
             if (parseInt(msg.status, 10) === 6 && msg.data && msg.data.state === "complete") {
                 localStorage.removeItem(allMotionStorageKey());
+                allMotionSetRunning(false);
                 var summary = msg.data.summary || {};
                 status.removeClass("text-muted text-danger").addClass("text-success")
                     .text("All-camera optimized scan complete. Saved " + (summary.saved_count || 0) + ", failed " + (summary.failed_count || 0) + ".");
@@ -53,8 +91,13 @@ $(function() {
             } else if (parseInt(msg.status, 10) === 6 && msg.data && msg.data.state === "running") {
                 status.removeClass("text-danger text-success").addClass("text-muted").text(allMotionStatusText(msg.data.progress));
                 setTimeout(function() { allMotionPoll(jobId); }, 5000);
+            } else if (parseInt(msg.status, 10) === 6 && msg.data && msg.data.state === "canceled") {
+                localStorage.removeItem(allMotionStorageKey());
+                allMotionSetRunning(false);
+                status.removeClass("text-muted text-danger").addClass("text-success").text("All-camera optimized scan canceled.");
             } else {
                 localStorage.removeItem(allMotionStorageKey());
+                allMotionSetRunning(false);
                 status.removeClass("text-muted text-success").addClass("text-danger").text((msg && msg.msg) ? msg.msg : "All-camera optimized scan failed.");
                 if ($.notify) $.notify({icon: "fa fa-times-circle fa-fw", message: (msg && msg.msg) ? msg.msg : "All-camera optimized scan failed."}, {type: "danger", delay: 8000});
             }
@@ -82,6 +125,7 @@ $(function() {
         }).done(function(msg) {
             if (parseInt(msg.status, 10) === 6 && msg.data && msg.data.job_id) {
                 localStorage.setItem(allMotionStorageKey(), msg.data.job_id);
+                allMotionSetRunning(true);
                 status.removeClass("text-danger text-success").addClass("text-muted").text("All-camera optimized scan started...");
                 allMotionPoll(msg.data.job_id);
             } else {
@@ -96,10 +140,28 @@ $(function() {
         });
     });
 
+    allMotionStopButton().off("click.autoMotionAllStop").on("click.autoMotionAllStop", function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var jobId = localStorage.getItem(allMotionStorageKey());
+        if (!jobId) {
+            allMotionSetRunning(false);
+            $("#auto-motion-all-status").removeClass("text-muted text-success").addClass("text-danger").text("No all-camera optimized scan is running.");
+            return false;
+        }
+        if (confirm("Stop the current all-camera optimized scan? Any cameras already saved will remain saved.")) {
+            allMotionCancel(jobId);
+        }
+        return false;
+    });
+
     var previousJob = localStorage.getItem(allMotionStorageKey());
     if (previousJob) {
+        allMotionSetRunning(true);
         $("#auto-motion-all-status").removeClass("text-danger text-success").addClass("text-muted").text("Checking previous all-camera optimized scan...");
         allMotionPoll(previousJob);
+    } else {
+        allMotionSetRunning(false);
     }
     /* Auto Detect Motion Settings All Cameras: end */
 });

@@ -93,6 +93,8 @@ Recommendation scans run as background jobs on the Bluecherry server. The web pa
 
 On the Devices page, click **Auto Detect Motion Settings All Cameras** to run Optimized Scan for every camera in the background. This action saves each recommended map automatically, reports saved and failed camera counts, and writes rollback files under the optimizer work directory before changing the database.
 
+Use the **Stop** button next to either scan button to cancel a running individual-camera or all-camera background scan.
+
 ## Tuning
 
 `--sensitivity` accepts `1-10`.

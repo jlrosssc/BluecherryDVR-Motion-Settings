@@ -73,8 +73,45 @@ $(function() {
         return "bluecherryRecommendMotionJob:" + id;
     }
 
+    function recommendMotionStopButton() {
+        var button = $("#auto-motion-stop");
+        if (!button.length) {
+            button = $('<button type="button" class="btn btn-default" id="auto-motion-stop" style="margin-left:6px; display:none;"><i class="fa fa-stop fa-fw"></i> Stop</button>');
+            $("#auto-motion-detect").after(button);
+        }
+        return button;
+    }
+
+    function recommendMotionSetRunning(running) {
+        recommendMotionStopButton().toggle(!!running);
+    }
+
+    function recommendMotionCancel(jobId) {
+        var status = $("#auto-motion-status");
+        status.removeClass("text-danger text-success").addClass("text-muted").text("Stopping recommendation scan...");
+        $.ajax({
+            type: "POST",
+            url: "/ajax/automotionmap.php",
+            dataType: "json",
+            data: {action: "cancel", job_id: jobId}
+        }).done(function(msg) {
+            localStorage.removeItem(recommendMotionStorageKey());
+            recommendMotionSetRunning(false);
+            if (parseInt(msg.status, 10) === 6) {
+                status.removeClass("text-muted text-danger").addClass("text-success").text((msg && msg.msg) ? msg.msg : "Recommendation scan canceled.");
+            } else {
+                status.removeClass("text-muted text-success").addClass("text-danger").text((msg && msg.msg) ? msg.msg : "Could not stop recommendation scan.");
+            }
+        }).fail(function(xhr) {
+            var message = "Could not stop recommendation scan.";
+            if (xhr && xhr.responseText) message += " " + xhr.responseText.substring(0, 180);
+            status.removeClass("text-muted text-success").addClass("text-danger").text(message);
+        });
+    }
+
     function recommendMotionPoll(jobId) {
         var status = $("#auto-motion-status");
+        recommendMotionSetRunning(true);
         $.ajax({
             type: "POST",
             url: "/ajax/automotionmap.php",
@@ -83,6 +120,7 @@ $(function() {
         }).done(function(msg) {
             if (parseInt(msg.status, 10) === 6 && msg.data && msg.data.state === "complete") {
                 localStorage.removeItem(recommendMotionStorageKey());
+                recommendMotionSetRunning(false);
                 if (recommendMotionApplyToGrid(msg.data.motion_map)) {
                     status.removeClass("text-muted text-danger").addClass("text-success")
                         .text("Loaded recommendation. Review/edit the grid, then click Save Changes. Proposed: " + recommendMotionCountsText(msg.data.proposed_counts));
@@ -91,8 +129,13 @@ $(function() {
             } else if (parseInt(msg.status, 10) === 6 && msg.data && msg.data.state === "running") {
                 status.removeClass("text-danger text-success").addClass("text-muted").text(recommendMotionProgressText(msg.data.progress));
                 setTimeout(function() { recommendMotionPoll(jobId); }, 5000);
+            } else if (parseInt(msg.status, 10) === 6 && msg.data && msg.data.state === "canceled") {
+                localStorage.removeItem(recommendMotionStorageKey());
+                recommendMotionSetRunning(false);
+                status.removeClass("text-muted text-danger").addClass("text-success").text("Recommendation scan canceled.");
             } else {
                 localStorage.removeItem(recommendMotionStorageKey());
+                recommendMotionSetRunning(false);
                 status.removeClass("text-muted text-success").addClass("text-danger").text((msg && msg.msg) ? msg.msg : "Recommendation scan failed.");
                 if ($.notify) $.notify({icon: "fa fa-times-circle fa-fw", message: (msg && msg.msg) ? msg.msg : "Recommendation scan failed."}, {type: "danger", delay: 8000});
             }
@@ -154,6 +197,7 @@ $(function() {
         }).done(function(msg) {
             if (parseInt(msg.status, 10) === 6 && msg.data && msg.data.job_id) {
                 localStorage.setItem(recommendMotionStorageKey(), msg.data.job_id);
+                recommendMotionSetRunning(true);
                 status.removeClass("text-danger text-success").addClass("text-muted").text("Recommendation scan started. Waiting for results...");
                 recommendMotionPoll(msg.data.job_id);
             } else {
@@ -166,6 +210,21 @@ $(function() {
         }).always(function() {
             button.button("reset");
         });
+    });
+
+    recommendMotionStopButton().off("click.recommendMotionStop").on("click.recommendMotionStop", function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var jobId = localStorage.getItem(recommendMotionStorageKey());
+        if (!jobId) {
+            recommendMotionSetRunning(false);
+            $("#auto-motion-status").removeClass("text-muted text-success").addClass("text-danger").text("No recommendation scan is running for this camera.");
+            return false;
+        }
+        if (confirm("Stop the current recommendation scan for this camera?")) {
+            recommendMotionCancel(jobId);
+        }
+        return false;
     });
 
     $("#auto-motion-scan-mode").off("change.recommendMotionMode").on("change.recommendMotionMode", function() {
@@ -181,8 +240,11 @@ $(function() {
 
     var previousJob = localStorage.getItem(recommendMotionStorageKey());
     if (previousJob) {
+        recommendMotionSetRunning(true);
         $("#auto-motion-status").removeClass("text-danger text-success").addClass("text-muted").text("Checking previous recommendation scan...");
         recommendMotionPoll(previousJob);
+    } else {
+        recommendMotionSetRunning(false);
     }
     /* Recommend Motion Sensitivity background job: end */
 });
