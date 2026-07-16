@@ -69,7 +69,7 @@ Then open Bluecherry:
 1. Go to the camera motion-map settings page.
 2. Set **Sensitivity** and **Noise Filter**.
 3. Choose **Quick Scan** or **Deep Scan**.
-4. For **Deep Scan**, choose `24-168` hours. It may take several minutes because it samples up to four recordings per selected hour across that time window.
+4. For **Deep Scan**, choose `24-168` hours and optionally adjust **Samples/Hour**. It defaults to `4` and is only shown for Deep Scan.
 5. Click **Recommend Motion Sensitivity**.
 6. Review and edit the grid.
 7. Click Bluecherry's normal **Save Changes** button.

@@ -105,6 +105,12 @@ def install(args):
                         </button>
                     </div>
                 </div>
+                <div class="form-group auto-motion-deep-option" style="display:none;">
+                    <label class="col-lg-2 col-md-2 control-label">Samples/Hour</label>
+                    <div class="col-lg-2 col-md-2">
+                        <input type="number" class="form-control" id="auto-motion-samples-per-hour" min="1" max="8" value="4" disabled="disabled" />
+                    </div>
+                </div>
                 <div class="form-group">
                     <div class="col-lg-12 col-md-12">
                         <span id="auto-motion-status" class="text-muted">Quick Scan uses recent recordings. Deep Scan samples 24-168 hours and may take several minutes. Review/edit, then click Save Changes.</span>
@@ -125,6 +131,20 @@ def install(args):
         '<button type="button" class="btn btn-primary click-event" id="auto-motion-detect" data-function="autoMotionMapRun" data-loading-text="Analyzing...">',
         '<button type="button" class="btn btn-primary" id="auto-motion-detect" data-loading-text="Analyzing...">',
     )
+    if 'id="auto-motion-samples-per-hour"' not in tpl:
+        status_block = """                <div class="form-group">
+                    <div class="col-lg-12 col-md-12">
+                        <span id="auto-motion-status" class="text-muted">Quick Scan uses recent recordings. Deep Scan samples 24-168 hours and may take several minutes. Review/edit, then click Save Changes.</span>
+                    </div>
+                </div>"""
+        samples_per_hour_block = """                <div class="form-group auto-motion-deep-option" style="display:none;">
+                    <label class="col-lg-2 col-md-2 control-label">Samples/Hour</label>
+                    <div class="col-lg-2 col-md-2">
+                        <input type="number" class="form-control" id="auto-motion-samples-per-hour" min="1" max="8" value="4" disabled="disabled" />
+                    </div>
+                </div>
+""" + status_block
+        tpl = tpl.replace(status_block, samples_per_hour_block, 1)
     old_start = "\naddJs(<<<'JS'\n$(function() {\n    /* Recommend Motion Sensitivity nowdoc: start */"
     old_end = "    /* Recommend Motion Sensitivity nowdoc: end */\n});\nJS\n);\n"
     while old_start in tpl:

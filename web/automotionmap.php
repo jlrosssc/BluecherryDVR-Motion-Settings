@@ -18,6 +18,7 @@ class automotionmap extends Controller {
         $noise = isset($_POST['noise_suppression']) ? intval($_POST['noise_suppression']) : 5;
         $mode = isset($_POST['scan_mode']) ? preg_replace('/[^a-z]/', '', strtolower($_POST['scan_mode'])) : 'quick';
         $deep_hours = isset($_POST['deep_hours']) ? intval($_POST['deep_hours']) : 24;
+        $samples_per_hour = isset($_POST['samples_per_hour']) ? intval($_POST['samples_per_hour']) : 4;
         $samples = isset($_POST['samples']) ? intval($_POST['samples']) : 0;
         $frames = isset($_POST['frames_per_video']) ? intval($_POST['frames_per_video']) : (($mode === 'deep') ? 3 : 2);
 
@@ -29,8 +30,9 @@ class automotionmap extends Controller {
             $mode = 'quick';
         }
         $deep_hours = max(24, min(168, $deep_hours));
+        $samples_per_hour = max(1, min(8, $samples_per_hour));
         if ($samples < 1) {
-            $samples = ($mode === 'deep') ? ($deep_hours * 4) : 2;
+            $samples = ($mode === 'deep') ? ($deep_hours * $samples_per_hour) : 2;
         }
         $samples = max(1, min(($mode === 'deep') ? 672 : 12, $samples));
         $frames = max(2, min(12, $frames));
@@ -44,6 +46,7 @@ class automotionmap extends Controller {
                 'noise_suppression' => $noise,
                 'scan_mode' => $mode,
                 'deep_hours' => $deep_hours,
+                'samples_per_hour' => ($mode === 'deep') ? $samples_per_hour : 0,
                 'samples' => $samples,
                 'frames_per_video' => $frames
             ));

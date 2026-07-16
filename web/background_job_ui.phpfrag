@@ -107,9 +107,12 @@ $(function() {
         button.button("loading");
         if (mode === "deep") {
             deepHours = Math.max(24, Math.min(168, deepHours));
-            scanSamples = deepHours * 4;
+            var samplesPerHour = parseInt($("#auto-motion-samples-per-hour").val(), 10) || 4;
+            samplesPerHour = Math.max(1, Math.min(8, samplesPerHour));
+            $("#auto-motion-samples-per-hour").val(samplesPerHour);
+            scanSamples = deepHours * samplesPerHour;
             $("#auto-motion-deep-hours").val(deepHours);
-            if (!confirm("Deep Scan will start a background job across " + deepHours + " hours and sample up to " + scanSamples + " recordings. This may take several minutes. Continue?")) {
+            if (!confirm("Deep Scan will start a background job across " + deepHours + " hours at " + samplesPerHour + " samples per hour, up to " + scanSamples + " recordings. This may take several minutes. Continue?")) {
                 button.button("reset");
                 return false;
             }
@@ -128,6 +131,7 @@ $(function() {
                 noise_suppression: $("#auto-motion-noise").val(),
                 scan_mode: mode,
                 deep_hours: deepHours,
+                samples_per_hour: (mode === "deep" ? samplesPerHour : 0),
                 samples: scanSamples,
                 frames_per_video: (mode === "deep" ? 3 : 2)
             }
@@ -147,6 +151,15 @@ $(function() {
             button.button("reset");
         });
     });
+
+    $("#auto-motion-scan-mode").off("change.recommendMotionMode").on("change.recommendMotionMode", function() {
+        var deep = $(this).val() === "deep";
+        $("#auto-motion-deep-hours").prop("disabled", !deep);
+        $("#auto-motion-samples-per-hour").prop("disabled", !deep);
+        $(".auto-motion-deep-option").toggle(deep);
+        $("#auto-motion-status").removeClass("text-danger text-success").addClass("text-muted")
+            .text(deep ? "Deep Scan samples recordings across the selected hours. Review/edit, then click Save Changes." : "Quick Scan uses recent recordings. Review/edit, then click Save Changes.");
+    }).trigger("change.recommendMotionMode");
 
     var previousJob = localStorage.getItem(recommendMotionStorageKey());
     if (previousJob) {
