@@ -368,7 +368,7 @@ def copy_recent_recordings(camera_id, sample_dir, sample_count, lookback_hours=N
     return files
 
 
-def extract_gray_frames(video_files, frame_dir, frames_per_video, width, height, progress_file=None, progress_offset=0, progress_total=None, file_offset=0, require_minimum=True):
+def extract_gray_frames(video_files, frame_dir, frames_per_video, width, height, progress_file=None, progress_offset=0, progress_total=None, file_offset=0, require_minimum=True, mapping_progress=True):
     frame_dir.mkdir(parents=True, exist_ok=True)
     extracted = []
     total = progress_total if progress_total is not None else len(video_files)
@@ -417,15 +417,16 @@ def extract_gray_frames(video_files, frame_dir, frames_per_video, width, height,
             frame_path = frame_dir / "video{:04d}_{:03d}.gray".format(file_index, frame_index)
             frame_path.write_bytes(chunk)
             extracted.append(frame_path)
-    write_progress(
-        progress_file,
-        "mapping",
-        "Building recommended motion map from {} extracted frames.".format(len(extracted)),
-        total=total,
-        current=min(total, progress_offset + len(video_files)),
-        phase="mapping",
-        frame_count=len(extracted),
-    )
+    if mapping_progress:
+        write_progress(
+            progress_file,
+            "mapping",
+            "Building recommended motion map from {} extracted frames.".format(len(extracted)),
+            total=total,
+            current=min(total, progress_offset + len(video_files)),
+            phase="mapping",
+            frame_count=len(extracted),
+        )
     if require_minimum and len(extracted) < 2:
         raise RuntimeError("Could not extract enough frames for analysis")
     return extracted
@@ -614,10 +615,21 @@ def optimized_build_map(video_files, frame_dir, args, cols, rows, keep_zones, ex
             progress_total=max_samples,
             file_offset=previous_count,
             require_minimum=False,
+            mapping_progress=False,
         )
         frame_paths.extend(new_frame_paths)
         if len(frame_paths) < 2:
             raise RuntimeError("Could not extract enough frames for analysis")
+        write_progress(
+            args.progress_file,
+            "optimizing",
+            "Optimized Scan checking stability after {} samples.".format(current_count),
+            current=current_count,
+            total=max_samples,
+            phase="optimizing",
+            frame_count=len(frame_paths),
+            stable_batches=stable_count,
+        )
         proposed_map, stats = build_map(
             frame_paths,
             cols,

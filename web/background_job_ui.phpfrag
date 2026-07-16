@@ -53,6 +53,8 @@ $(function() {
             text = "Optimized Scan reviewed " + current + " of up to " + total + " samples.";
             if (progress.change_percent !== undefined) {
                 text += " Map changed " + progress.change_percent + "% in the latest batch.";
+            } else if (progress.frame_count !== undefined) {
+                text += " Checking whether more samples are still useful.";
             }
         } else if (phase === "mapping") {
             text = progress.message || "Building recommended motion map.";
