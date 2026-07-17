@@ -304,8 +304,12 @@ class automotionmap extends Controller {
             exec('kill -TERM ' . escapeshellarg((string)$pid) . ' 2>/dev/null', $output, $rc);
             $killed = $killed || ($rc === 0);
         }
+        if ($killed) {
+            usleep(500000);
+        }
 
         file_put_contents($base . '.cancelled', date('c') . "\n");
+        $this->cleanupTempFiles();
         $this->writeCancelProgress($base);
         if (!file_exists($base . '.exit')) {
             file_put_contents($base . '.exit', "130\n");
@@ -335,6 +339,19 @@ class automotionmap extends Controller {
             }
         }
         return array_unique($pids);
+    }
+
+    private function cleanupTempFiles()
+    {
+        $root = '/var/lib/bluecherry/motion-optimizer';
+        foreach (glob($root . '/camera-*', GLOB_ONLYDIR) as $camera_dir) {
+            foreach (array('samples', 'frames') as $name) {
+                $path = $camera_dir . '/' . $name;
+                if (is_dir($path)) {
+                    exec('rm -rf ' . escapeshellarg($path) . ' 2>/dev/null');
+                }
+            }
+        }
     }
 
     private function writeCancelProgress($base)

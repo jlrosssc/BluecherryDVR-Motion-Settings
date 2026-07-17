@@ -95,6 +95,8 @@ On the Devices page, click **Auto Detect Motion Settings All Cameras** to run Op
 
 Use the **Stop** button next to either scan button to cancel a running individual-camera or all-camera background scan.
 
+The optimizer automatically removes temporary copied recordings and extracted frame files after each camera is analyzed. It keeps reports, previews, rollback files, and job status files.
+
 ## Tuning
 
 `--sensitivity` accepts `1-10`.

@@ -15,6 +15,7 @@ import os
 import random
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -91,6 +92,30 @@ def set_progress_context(**fields):
 
 def clear_progress_context():
     PROGRESS_CONTEXT.clear()
+
+
+def handle_termination(signum, _frame):
+    raise RuntimeError("Canceled by signal {}".format(signum))
+
+
+def cleanup_temp_paths(progress_file, *paths):
+    existing = [Path(path) for path in paths if path and Path(path).exists()]
+    if not existing:
+        return
+    write_progress(
+        progress_file,
+        "cleaning",
+        "Cleaning temporary sample and frame files.",
+        phase="cleaning",
+    )
+    for path in existing:
+        try:
+            if path.is_dir():
+                shutil.rmtree(str(path))
+            else:
+                path.unlink()
+        except OSError:
+            pass
 
 
 def read_bluecherry_config(path=CONFIG_PATH):
@@ -799,103 +824,108 @@ def analyze_camera(cfg, camera, args, final_progress=True):
     output_dir.mkdir(parents=True, exist_ok=True)
     if frame_dir.exists():
         shutil.rmtree(str(frame_dir))
+    cleanup_enabled = not getattr(args, "keep_work_files", False) and not getattr(args, "sample_dir", None)
 
-    if getattr(args, "sample_dir", None):
-        video_files = sorted(Path(args.sample_dir).expanduser().glob("*"))
-        write_progress(
-            args.progress_file,
-            "copying",
-            "Using {} supplied recordings for analysis.".format(len(video_files)),
-            total=len(video_files),
-            current=len(video_files),
-            phase="copying",
-        )
-    else:
-        video_files = copy_recent_recordings(
-            camera["id"],
-            sample_dir,
-            args.samples,
-            args.lookback_hours,
-            args.progress_file,
-            randomize=args.optimized,
-        )
+    try:
+        if getattr(args, "sample_dir", None):
+            video_files = sorted(Path(args.sample_dir).expanduser().glob("*"))
+            write_progress(
+                args.progress_file,
+                "copying",
+                "Using {} supplied recordings for analysis.".format(len(video_files)),
+                total=len(video_files),
+                current=len(video_files),
+                phase="copying",
+            )
+        else:
+            video_files = copy_recent_recordings(
+                camera["id"],
+                sample_dir,
+                args.samples,
+                args.lookback_hours,
+                args.progress_file,
+                randomize=args.optimized,
+            )
 
-    keep_zones = parse_zones(args.keep_zone)
-    exclude_zones = parse_zones(args.exclude_zone)
-    optimized = {"enabled": False}
-    if args.optimized:
-        proposed_map, stats, frame_paths, video_files, optimized = optimized_build_map(
-            video_files,
-            frame_dir,
-            args,
-            cols,
-            rows,
-            keep_zones,
-            exclude_zones,
-        )
-    else:
-        frame_paths = extract_gray_frames(video_files, frame_dir, args.frames_per_video, args.frame_width, args.frame_height, args.progress_file)
-        proposed_map, stats = build_map(
-            frame_paths,
-            cols,
-            rows,
-            args.frame_width,
-            args.frame_height,
-            args.sensitivity,
-            args.noise_suppression,
-            keep_zones,
-            exclude_zones,
-        )
+        keep_zones = parse_zones(args.keep_zone)
+        exclude_zones = parse_zones(args.exclude_zone)
+        optimized = {"enabled": False}
+        if args.optimized:
+            proposed_map, stats, frame_paths, video_files, optimized = optimized_build_map(
+                video_files,
+                frame_dir,
+                args,
+                cols,
+                rows,
+                keep_zones,
+                exclude_zones,
+            )
+        else:
+            frame_paths = extract_gray_frames(video_files, frame_dir, args.frames_per_video, args.frame_width, args.frame_height, args.progress_file)
+            proposed_map, stats = build_map(
+                frame_paths,
+                cols,
+                rows,
+                args.frame_width,
+                args.frame_height,
+                args.sensitivity,
+                args.noise_suppression,
+                keep_zones,
+                exclude_zones,
+            )
 
-    stamp = dt.datetime.now().astimezone().strftime("%Y%m%d-%H%M%S-%Z")
-    preview_svg = output_dir / "camera-{}-preview-{}.svg".format(camera["id"], stamp)
-    report_txt = output_dir / "camera-{}-report-{}.txt".format(camera["id"], stamp)
-    report_json = output_dir / "camera-{}-report-{}.json".format(camera["id"], stamp)
+        stamp = dt.datetime.now().astimezone().strftime("%Y%m%d-%H%M%S-%Z")
+        preview_svg = output_dir / "camera-{}-preview-{}.svg".format(camera["id"], stamp)
+        report_txt = output_dir / "camera-{}-report-{}.txt".format(camera["id"], stamp)
+        report_json = output_dir / "camera-{}-report-{}.json".format(camera["id"], stamp)
 
-    backup_file = None
-    if args.apply:
-        backup_file = apply_map(cfg, camera, proposed_map, work_dir)
+        backup_file = None
+        if args.apply:
+            backup_file = apply_map(cfg, camera, proposed_map, work_dir)
 
-    payload = {
-        "generated_at": friendly_now(),
-        "camera_id": camera["id"],
-        "camera_name": camera["name"],
-        "cols": cols,
-        "rows": rows,
-        "sensitivity": args.sensitivity,
-        "noise_suppression": args.noise_suppression,
-        "samples": [str(path) for path in video_files],
-        "lookback_hours": args.lookback_hours,
-        "frame_count": len(frame_paths),
-        "current_counts": counts_for_map(camera["motion_map"]),
-        "proposed_counts": counts_for_map(proposed_map),
-        "current_motion_map": camera["motion_map"],
-        "proposed_motion_map": proposed_map,
-        "stats": {k: v for k, v in stats.items() if k not in ("scores", "active_counts")},
-        "optimized": optimized,
-        "keep_zones": keep_zones,
-        "exclude_zones": exclude_zones,
-        "applied": bool(args.apply),
-        "backup_file": backup_file,
-        "preview_svg": str(preview_svg),
-        "json_report": str(report_json),
-    }
+        payload = {
+            "generated_at": friendly_now(),
+            "camera_id": camera["id"],
+            "camera_name": camera["name"],
+            "cols": cols,
+            "rows": rows,
+            "sensitivity": args.sensitivity,
+            "noise_suppression": args.noise_suppression,
+            "samples": [str(path) for path in video_files],
+            "lookback_hours": args.lookback_hours,
+            "frame_count": len(frame_paths),
+            "current_counts": counts_for_map(camera["motion_map"]),
+            "proposed_counts": counts_for_map(proposed_map),
+            "current_motion_map": camera["motion_map"],
+            "proposed_motion_map": proposed_map,
+            "stats": {k: v for k, v in stats.items() if k not in ("scores", "active_counts")},
+            "optimized": optimized,
+            "keep_zones": keep_zones,
+            "exclude_zones": exclude_zones,
+            "applied": bool(args.apply),
+            "backup_file": backup_file,
+            "preview_svg": str(preview_svg),
+            "json_report": str(report_json),
+        }
 
-    write_svg(preview_svg, proposed_map, cols, rows, "{} proposed motion map".format(camera["name"]))
-    report_json.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
-    write_report(report_txt, payload)
-
+        write_svg(preview_svg, proposed_map, cols, rows, "{} proposed motion map".format(camera["name"]))
+        report_json.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n")
+        write_report(report_txt, payload)
+        result = payload
+    finally:
+        if cleanup_enabled:
+            cleanup_temp_paths(args.progress_file, sample_dir, frame_dir)
     if final_progress:
         write_progress(
             args.progress_file,
             "complete",
             "Recommendation complete.",
-            total=len(video_files),
-            current=len(video_files),
+            total=len(result["samples"]),
+            current=len(result["samples"]),
             phase="complete",
-            frame_count=len(frame_paths),
+            frame_count=result["frame_count"],
         )
-    return payload
+    return result
 
 
 def cmd_analyze(args):
@@ -1052,6 +1082,7 @@ def build_parser():
     analyze.add_argument("--optimized-batch-size", type=int, default=24, help=argparse.SUPPRESS)
     analyze.add_argument("--optimized-min-samples", type=int, default=48, help=argparse.SUPPRESS)
     analyze.add_argument("--optimized-stability-percent", type=float, default=1.0, help=argparse.SUPPRESS)
+    analyze.add_argument("--keep-work-files", action="store_true", help=argparse.SUPPRESS)
     analyze.set_defaults(func=cmd_analyze)
 
     all_p = sub.add_parser("optimize-all", help="Run optimized analysis and save maps for all cameras")
@@ -1072,12 +1103,14 @@ def build_parser():
     all_p.add_argument("--optimized-batch-size", type=int, default=24, help=argparse.SUPPRESS)
     all_p.add_argument("--optimized-min-samples", type=int, default=48, help=argparse.SUPPRESS)
     all_p.add_argument("--optimized-stability-percent", type=float, default=1.0, help=argparse.SUPPRESS)
+    all_p.add_argument("--keep-work-files", action="store_true", help=argparse.SUPPRESS)
     all_p.set_defaults(func=cmd_optimize_all)
 
     return parser
 
 
 def main(argv=None):
+    signal.signal(signal.SIGTERM, handle_termination)
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
