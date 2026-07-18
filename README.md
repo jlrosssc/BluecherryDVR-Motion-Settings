@@ -26,6 +26,21 @@ The web UI does not overwrite the saved Bluecherry motion map during analysis. I
 - Bluecherry's bundled ffmpeg at `/usr/lib/bluecherry/ffmpeg`
 - `gcc` only for the optional web UI helper
 
+## External Tools and Notices
+
+This repository does not bundle Bluecherry DVR, FFmpeg, MySQL, Docker,
+or their source code. The optimizer calls tools already installed on the
+Bluecherry server:
+
+- Bluecherry DVR and its web UI remain under Bluecherry's own licensing.
+- Bluecherry's bundled FFmpeg remains under the license terms of the
+  FFmpeg build distributed with Bluecherry.
+- MySQL/MariaDB command-line tools and Docker, when used, remain under
+  their own licenses.
+
+The web UI installer patches local Bluecherry PHP/JavaScript files on
+the target server and writes timestamped backups before changing them.
+
 ## Standalone Install
 
 ```bash
